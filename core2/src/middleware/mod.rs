@@ -11,32 +11,19 @@
 #![warn(missing_docs)]
 use std::{future::Future, pin::Pin, sync::Mutex, time::Duration};
 
-use ethers::{
-    abi::ethereum_types::BloomInput,
-    prelude::{
-        k256::{
-            ecdsa::SigningKey,
-            sha2::{Digest, Sha256},
-        },
-        ProviderError,
-    },
-    providers::{
-        FilterKind, FilterWatcher, JsonRpcClient, Middleware, PendingTransaction, Provider,
-        PubsubClient, SubscriptionStream,
-    },
-    signers::{Signer, Wallet},
-    types::{
-        transaction::{eip2718::TypedTransaction, eip712::Eip712},
-        Address as eAddress, BlockId, Bloom, Bytes as eBytes, FilteredParams, NameOrAddress,
-        Signature, Transaction, TransactionReceipt,
-    },
-};
 use futures_timer::Delay;
 use futures_util::Stream;
-use rand::{rngs::StdRng, SeedableRng};
-use revm::primitives::{CreateScheme, Output, TransactTo};
 use serde::de::DeserializeOwned;
 use serde_json::value::RawValue;
+use sha2::Sha256;
+use starknet::{
+    core::{
+        crypto::Signature,
+        types::{BlockId, BroadcastedTransaction, Felt, FunctionCall, TransactionWithReceipt},
+    },
+    providers::{JsonRpcClient, ProviderError},
+    signers::{LocalWallet, Signer, SignerInteractivityContext, SigningKey, VerifyingKey},
+};
 
 use super::*;
 use crate::environment::{instruction::*, Broadcast, Environment};
@@ -73,7 +60,7 @@ pub mod nonce_middleware;
 /// useful for debugging and post-processing.
 #[derive(Debug)]
 pub struct ArbiterMiddleware {
-    provider: Provider<Connection>,
+    connection: Connection,
     wallet: EOA,
     /// An optional label for the middleware instance
     #[allow(unused)]
@@ -82,100 +69,26 @@ pub struct ArbiterMiddleware {
 
 #[async_trait]
 impl Signer for ArbiterMiddleware {
-    type Error = ArbiterCoreError;
+    type GetPublicKeyError = ArbiterCoreError;
+    type SignError = ArbiterCoreError;
 
-    async fn sign_message<S: Send + Sync + AsRef<[u8]>>(
-        &self,
-        message: S,
-    ) -> Result<Signature, Self::Error> {
+    async fn get_public_key(&self) -> Result<VerifyingKey, Self::GetPublicKeyError> {
+        match self.wallet {
+            // TODO: new error maybe?
+            EOA::Forked(_) => Err(ArbiterCoreError::ForkedEOASignError),
+            EOA::Wallet(wallet) => wallet.get_public_key(),
+        }
+    }
+
+    async fn sign_hash(&self, hash: &Felt) -> Result<Signature, Self::SignError> {
         match self.wallet {
             EOA::Forked(_) => Err(ArbiterCoreError::ForkedEOASignError),
-            EOA::Wallet(ref wallet) => {
-                let message = message.as_ref();
-                let message_hash = ethers::utils::hash_message(message);
-                let signature = wallet.sign_message(message_hash).await?;
-                Ok(signature)
-            }
+            EOA::Wallet(wallet) => wallet.sign_hash(hash),
         }
     }
 
-    /// Signs the transaction
-    async fn sign_transaction(&self, message: &TypedTransaction) -> Result<Signature, Self::Error> {
-        match self.wallet {
-            EOA::Forked(_) => Err(ArbiterCoreError::ForkedEOASignError),
-            EOA::Wallet(ref wallet) => {
-                let signature = wallet.sign_transaction(message).await?;
-                Ok(signature)
-            }
-        }
-    }
-
-    /// Encodes and signs the typed data according EIP-712.
-    /// Payload must implement Eip712 trait.
-    async fn sign_typed_data<T: Eip712 + Send + Sync>(
-        &self,
-        payload: &T,
-    ) -> Result<Signature, Self::Error> {
-        match self.wallet {
-            EOA::Forked(_) => Err(ArbiterCoreError::ForkedEOASignError),
-            EOA::Wallet(ref wallet) => {
-                let signature = wallet.sign_typed_data(payload).await?;
-                Ok(signature)
-            }
-        }
-    }
-
-    /// Returns the signer's Ethereum Address
-    fn address(&self) -> eAddress {
-        match &self.wallet {
-            EOA::Forked(address) => *address,
-            EOA::Wallet(wallet) => wallet.address(),
-        }
-    }
-
-    /// Returns the signer's chain id
-    fn chain_id(&self) -> u64 {
-        0 // TODO: THIS MIGHT BE STUPID
-    }
-
-    /// Sets the signer's chain id
-    #[must_use]
-    fn with_chain_id<T: Into<u64>>(self, chain_id: T) -> Self {
-        match self.wallet {
-            EOA::Forked(_) => self,
-            EOA::Wallet(wallet) => Self {
-                wallet: EOA::Wallet(wallet.with_chain_id(chain_id)),
-                ..self
-            },
-        }
-    }
-}
-
-#[async_trait::async_trait]
-impl JsonRpcClient for ArbiterMiddleware {
-    type Error = ProviderError;
-    async fn request<T: Serialize + Send + Sync + Debug, R: DeserializeOwned + Send>(
-        &self,
-        method: &str,
-        params: T,
-    ) -> Result<R, ProviderError> {
-        self.provider().as_ref().request(method, params).await
-    }
-}
-
-#[async_trait::async_trait]
-impl PubsubClient for ArbiterMiddleware {
-    type NotificationStream = Pin<Box<dyn Stream<Item = Box<RawValue>> + Send>>;
-
-    fn subscribe<T: Into<ethers::types::U256>>(
-        &self,
-        id: T,
-    ) -> Result<Self::NotificationStream, Self::Error> {
-        self.provider().as_ref().subscribe(id)
-    }
-
-    fn unsubscribe<T: Into<ethers::types::U256>>(&self, id: T) -> Result<(), Self::Error> {
-        self.provider.as_ref().unsubscribe(id)
+    fn is_interactive(&self, context: SignerInteractivityContext<'_>) -> bool {
+        return true;
     }
 }
 
@@ -189,63 +102,46 @@ pub enum EOA {
     Forked(eAddress),
     /// The [`Wallet`] variant "real" in the sense that is has a valid private
     /// key from the provided seed
-    Wallet(Wallet<SigningKey>),
+    Wallet(LocalWallet),
 }
 
 impl ArbiterMiddleware {
-    /// Creates a new instance of `ArbiterMiddleware` with procedurally
-    /// generated signer/address if provided a seed/label and otherwise a
-    /// random signer if not.
-    ///
-    /// # Examples
-    /// ```
-    /// use arbiter_core::{environment::Environment, middleware::ArbiterMiddleware};
-    ///
-    /// // Create a new environment and run it
-    /// let mut environment = Environment::builder().build();
-    ///
-    /// // Retrieve the environment to create a new middleware instance
-    /// let client = ArbiterMiddleware::new(&environment, Some("test_label"));
-    ///
-    /// // We can create a middleware instance without a seed by doing the following
-    /// let no_seed_middleware = ArbiterMiddleware::new(&environment, None);
-    /// ```
-    /// Use a seed if you want to have a constant address across simulations as
-    /// well as a label for a client. This can be useful for debugging.
     pub fn new(
         environment: &Environment,
         seed_and_label: Option<&str>,
     ) -> Result<Arc<Self>, ArbiterCoreError> {
         let connection = Connection::from(environment);
-        let wallet = if let Some(seed) = seed_and_label {
+
+        let signing_key = if let Some(seed) = seed_and_label {
+            // seed_and_label
             let mut hasher = Sha256::new();
             hasher.update(seed);
             let hashed = hasher.finalize();
-            let mut rng: StdRng = SeedableRng::from_seed(hashed.into());
-            Wallet::new(&mut rng)
+            // TODO: probably will fail
+            SigningKey::from_secret_scalar(hashed.into())
         } else {
-            let mut rng = rand::thread_rng();
-            Wallet::new(&mut rng)
+            SigningKey::from_random()
         };
+
+        let wallet = LocalWallet::from_signing_key(signing_key);
+
         connection
             .instruction_sender
-            .upgrade()
+            .upgrade() // TODO: WHY?!
             .ok_or(ArbiterCoreError::UpgradeSenderError)?
             .send(Instruction::AddAccount {
                 address: wallet.address(),
                 outcome_sender: connection.outcome_sender.clone(),
             })?;
-        connection.outcome_receiver.recv()??;
 
-        let provider = Provider::new(connection);
+        connection.outcome_receiver.recv()??;
         info!(
-            "Created new `ArbiterMiddleware` instance attached to environment labeled:
-        {:?}",
+            "Created new `ArbiterMiddleware` instance from a fork -- attached to environment labeled: {:?}",
             environment.parameters.label
         );
         Ok(Arc::new(Self {
             wallet: EOA::Wallet(wallet),
-            provider,
+            connection,
             label: seed_and_label.map(|s| s.to_string()),
         }))
     }
@@ -266,16 +162,21 @@ impl ArbiterMiddleware {
             event_sender: environment.socket.event_broadcaster.clone(),
             filter_receivers: Arc::new(Mutex::new(HashMap::new())),
         };
-        let provider = Provider::new(connection);
         info!(
             "Created new `ArbiterMiddleware` instance from a fork -- attached to environment labeled: {:?}",
             environment.parameters.label
         );
         Ok(Arc::new(Self {
             wallet: EOA::Forked(forked_eoa),
-            provider,
+            connection,
             label: None,
         }))
+    }
+
+    /// Provides access to the associated Ethereum provider which is given by
+    /// the [`Provider<Connection>`] for [`ArbiterMiddleware`].
+    fn provider(&self) -> Connection {
+        &self.connection
     }
 
     /// Allows the user to update the block number and timestamp of the
@@ -303,7 +204,7 @@ impl ArbiterMiddleware {
     }
 
     /// Returns the timestamp of the current block.
-    pub async fn get_block_timestamp(&self) -> Result<ethers::types::U256, ArbiterCoreError> {
+    pub async fn get_block_timestamp(&self) -> Result<eU256, ArbiterCoreError> {
         let provider = self.provider().as_ref();
         provider
             .instruction_sender
@@ -315,9 +216,7 @@ impl ArbiterMiddleware {
             })?;
 
         match provider.outcome_receiver.recv()?? {
-            Outcome::QueryReturn(outcome) => {
-                Ok(ethers::types::U256::from_str_radix(outcome.as_ref(), 10)?)
-            }
+            Outcome::QueryReturn(outcome) => Ok(eU256::from_str_radix(outcome.as_ref(), 10)?),
             _ => unreachable!(),
         }
     }
@@ -356,10 +255,7 @@ impl ArbiterMiddleware {
     /// This can only be done if the [`Environment`] has
     /// [`EnvironmentParameters`] `gas_settings` field set to
     /// [`GasSettings::UserControlled`].
-    pub async fn set_gas_price(
-        &self,
-        gas_price: ethers::types::U256,
-    ) -> Result<(), ArbiterCoreError> {
+    pub async fn set_gas_price(&self, gas_price: eU256) -> Result<(), ArbiterCoreError> {
         let provider = self.provider.as_ref();
         provider
             .instruction_sender
@@ -377,25 +273,10 @@ impl ArbiterMiddleware {
             _ => unreachable!(),
         }
     }
-}
-
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-#[async_trait::async_trait]
-impl Middleware for ArbiterMiddleware {
-    type Provider = Connection;
-    type Error = ArbiterCoreError;
-    type Inner = Provider<Connection>;
 
     /// Returns a reference to the inner middleware of which there is none when
     /// using [`ArbiterMiddleware`] so we relink to `Self`
     fn inner(&self) -> &Self::Inner {
-        &self.provider
-    }
-
-    /// Provides access to the associated Ethereum provider which is given by
-    /// the [`Provider<Connection>`] for [`ArbiterMiddleware`].
-    fn provider(&self) -> &Provider<Self::Provider> {
         &self.provider
     }
 
@@ -413,41 +294,19 @@ impl Middleware for ArbiterMiddleware {
     /// transaction environment used for `revm`-based transactions.
     /// It then sends this transaction for execution and returns the
     /// corresponding pending transaction.
-    async fn send_transaction<T: Into<TypedTransaction> + Send + Sync>(
+    async fn send_transaction<T: Into<BroadcastedTransaction> + Send + Sync>(
         &self,
         tx: T,
         _block: Option<BlockId>,
-    ) -> Result<PendingTransaction<'_, Self::Provider>, Self::Error> {
+    ) -> Result<TransactionWithReceipt<'_, Self::Provider>, Self::Error> {
         trace!("Building transaction");
-        let tx: TypedTransaction = tx.into();
 
         // Check the `to` field of the transaction to determine if it is a call or a
         // deploy. If there is no `to` field, then it is a `Deploy` else it is a
         // `Call`.
-        let transact_to = match tx.to_addr() {
-            Some(&to) => TransactTo::Call(to.to_fixed_bytes().into()),
-            None => TransactTo::Create(CreateScheme::Create),
-        };
-        let tx_env = TxEnv {
-            caller: self.address().to_fixed_bytes().into(),
-            gas_limit: u64::MAX,
-            gas_price: revm::primitives::U256::from_limbs(self.get_gas_price().await?.0),
-            gas_priority_fee: None,
-            transact_to,
-            value: U256::ZERO,
-            data: revm_primitives::Bytes(bytes::Bytes::from(
-                tx.data()
-                    .ok_or(ArbiterCoreError::MissingDataError)?
-                    .to_vec(),
-            )),
-            chain_id: None,
-            nonce: None,
-            access_list: Vec::new(),
-            blob_hashes: Vec::new(),
-            max_fee_per_blob_gas: None,
-        };
+
         let instruction = Instruction::Transaction {
-            tx_env: tx_env.clone(),
+            tx: tx.into(),
             outcome_sender: self.provider.as_ref().outcome_sender.clone(),
         };
 
@@ -610,39 +469,13 @@ impl Middleware for ArbiterMiddleware {
     /// be documented in the `revm` DB.
     async fn call(
         &self,
-        tx: &TypedTransaction,
+        call: &FunctionCall,
         _block: Option<BlockId>,
     ) -> Result<eBytes, Self::Error> {
         trace!("Building call");
-        let tx = tx.clone();
 
-        // Check the `to` field of the transaction to determine if it is a call or a
-        // deploy. If there is no `to` field, then it is a `Deploy` else it is a
-        // `Call`.
-        let transact_to = match tx.to_addr() {
-            Some(&to) => TransactTo::Call(to.to_fixed_bytes().into()),
-            None => TransactTo::Create(CreateScheme::Create),
-        };
-        let tx_env = TxEnv {
-            caller: self.address().to_fixed_bytes().into(),
-            gas_limit: u64::MAX,
-            gas_price: U256::ZERO,
-            gas_priority_fee: None,
-            transact_to,
-            value: U256::ZERO,
-            data: revm_primitives::Bytes(bytes::Bytes::from(
-                tx.data()
-                    .ok_or(ArbiterCoreError::MissingDataError)?
-                    .to_vec(),
-            )),
-            chain_id: None,
-            nonce: None,
-            access_list: Vec::new(),
-            blob_hashes: Vec::new(),
-            max_fee_per_blob_gas: None,
-        };
         let instruction = Instruction::Call {
-            tx_env,
+            call,
             outcome_sender: self.provider().as_ref().outcome_sender.clone(),
         };
         self.provider()
@@ -674,78 +507,7 @@ impl Middleware for ArbiterMiddleware {
         }
     }
 
-    /// Creates a new filter for incoming Ethereum logs based on certain
-    /// criteria.
-    ///
-    /// Currently, this method supports log filters. Other filters like
-    /// `NewBlocks` and `PendingTransactions` are not yet implemented.
-    async fn new_filter(&self, filter: FilterKind<'_>) -> Result<eU256, Self::Error> {
-        let provider = self.provider.as_ref();
-        let (_method, args) = match filter {
-            FilterKind::NewBlocks => unimplemented!(
-                "Filtering via new `FilterKind::NewBlocks` has not been implemented yet!"
-            ),
-            FilterKind::PendingTransactions => {
-                unimplemented!("Filtering via `FilterKind::PendingTransactions` has not been implemented yet! 
-                At the current development stage of Arbiter, transactions do not actually sit in a pending state
-                 -- they are executed immediately.")
-            }
-            FilterKind::Logs(filter) => ("eth_newFilter", filter),
-        };
-        let filter = args.clone();
-        let mut hasher = Sha256::new();
-        hasher.update(serde_json::to_string(&args)?);
-        let hash = hasher.finalize();
-        let id = ethers::types::U256::from(ethers::types::H256::from_slice(&hash).as_bytes());
-        let event_receiver = provider.event_sender.subscribe();
-        let filter_receiver = FilterReceiver {
-            filter,
-            receiver: Some(event_receiver),
-        };
-        provider
-            .filter_receivers
-            .lock()
-            .unwrap()
-            .insert(id, filter_receiver);
-        debug!("Filter created with ID: {:?}", id);
-        Ok(id)
-    }
-
-    async fn get_logs(&self, filter: &Filter) -> Result<Vec<eLog>, Self::Error> {
-        let provider = self.provider.as_ref();
-        provider
-            .instruction_sender
-            .upgrade()
-            .ok_or(ArbiterCoreError::UpgradeSenderError)?
-            .send(Instruction::Query {
-                environment_data: EnvironmentData::Logs {
-                    filter: filter.clone(),
-                },
-                outcome_sender: provider.outcome_sender.clone(),
-            })?;
-        let outcome = provider.outcome_receiver.recv()??;
-        match outcome {
-            Outcome::QueryReturn(outcome) => {
-                let logs: Vec<eLog> = serde_json::from_str(outcome.as_ref())?;
-                Ok(logs)
-            }
-            _ => unreachable!(),
-        }
-    }
-
-    /// Starts watching for logs that match a specific filter.
-    ///
-    /// This method creates a filter watcher that continuously checks for new
-    /// logs matching the criteria in a separate thread.
-    async fn watch<'b>(
-        &'b self,
-        filter: &Filter,
-    ) -> Result<FilterWatcher<'b, Self::Provider, eLog>, Self::Error> {
-        let id = self.new_filter(FilterKind::Logs(filter)).await?;
-        Ok(FilterWatcher::new(id, self.provider()).interval(Duration::ZERO))
-    }
-
-    async fn get_gas_price(&self) -> Result<ethers::types::U256, Self::Error> {
+    async fn get_gas_price(&self) -> Result<eU256, Self::Error> {
         let provider = self.provider.as_ref();
         provider
             .instruction_sender
@@ -757,14 +519,12 @@ impl Middleware for ArbiterMiddleware {
             })?;
 
         match provider.outcome_receiver.recv()?? {
-            Outcome::QueryReturn(outcome) => {
-                Ok(ethers::types::U256::from_str_radix(outcome.as_ref(), 10)?)
-            }
+            Outcome::QueryReturn(outcome) => Ok(eU256::from_str_radix(outcome.as_ref(), 10)?),
             _ => unreachable!(),
         }
     }
 
-    async fn get_block_number(&self) -> Result<U64, Self::Error> {
+    async fn get_block_number(&self) -> Result<u64, Self::Error> {
         let provider = self.provider().as_ref();
         provider
             .instruction_sender
@@ -775,26 +535,20 @@ impl Middleware for ArbiterMiddleware {
                 outcome_sender: provider.outcome_sender.clone(),
             })?;
         match provider.outcome_receiver.recv()?? {
-            Outcome::QueryReturn(outcome) => {
-                Ok(ethers::types::U64::from_str_radix(outcome.as_ref(), 10)?)
-            }
+            Outcome::QueryReturn(outcome) => Ok(u64::from_str_radix(outcome.as_ref(), 10)?),
             _ => unreachable!(),
         }
     }
 
-    async fn get_balance<T: Into<NameOrAddress> + Send + Sync>(
+    async fn get_balance<T: Into<eAddress> + Send + Sync>(
         &self,
         from: T,
         block: Option<BlockId>,
-    ) -> Result<ethers::types::U256, Self::Error> {
+    ) -> Result<eU256, Self::Error> {
         if block.is_some() {
             return Err(ArbiterCoreError::InvalidQueryError);
         }
-        let address: NameOrAddress = from.into();
-        let address = match address {
-            NameOrAddress::Name(_) => return Err(ArbiterCoreError::InvalidQueryError),
-            NameOrAddress::Address(address) => address,
-        };
+        let address: eAddress = from.into();
 
         let provider = self.provider.as_ref();
         provider
@@ -802,29 +556,23 @@ impl Middleware for ArbiterMiddleware {
             .upgrade()
             .ok_or(ArbiterCoreError::UpgradeSenderError)?
             .send(Instruction::Query {
-                environment_data: EnvironmentData::Balance(ethers::types::Address::from(address)),
+                environment_data: EnvironmentData::Balance(address),
                 outcome_sender: provider.outcome_sender.clone(),
             })?;
 
         match provider.outcome_receiver.recv()?? {
-            Outcome::QueryReturn(outcome) => {
-                Ok(ethers::types::U256::from_str_radix(outcome.as_ref(), 10)?)
-            }
+            Outcome::QueryReturn(outcome) => Ok(eU256::from_str_radix(outcome.as_ref(), 10)?),
             _ => unreachable!(),
         }
     }
 
     /// Returns the nonce of the address
-    async fn get_transaction_count<T: Into<NameOrAddress> + Send + Sync>(
+    async fn get_transaction_count<T: Into<eAddress> + Send + Sync>(
         &self,
         from: T,
         _block: Option<BlockId>,
     ) -> Result<eU256, Self::Error> {
-        let address: NameOrAddress = from.into();
-        let address = match address {
-            NameOrAddress::Name(_) => return Err(ArbiterCoreError::MissingDataError),
-            NameOrAddress::Address(address) => address,
-        };
+        let address: eAddress = from.into();
         let provider = self.provider.as_ref();
         provider
             .instruction_sender
@@ -836,9 +584,7 @@ impl Middleware for ArbiterMiddleware {
             })?;
 
         match provider.outcome_receiver.recv()?? {
-            Outcome::QueryReturn(outcome) => {
-                Ok(ethers::types::U256::from_str_radix(outcome.as_ref(), 10)?)
-            }
+            Outcome::QueryReturn(outcome) => Ok(eU256::from_str_radix(outcome.as_ref(), 10)?),
             _ => unreachable!(),
         }
     }
@@ -853,7 +599,7 @@ impl Middleware for ArbiterMiddleware {
 
     async fn fill_transaction(
         &self,
-        tx: &mut TypedTransaction,
+        tx: &mut BroadcastedTransaction,
         _block: Option<BlockId>,
     ) -> Result<(), Self::Error> {
         // Set the `from` field of the transaction to the client address
@@ -871,17 +617,13 @@ impl Middleware for ArbiterMiddleware {
     }
     /// Fetches the value stored at the storage slot `key` for an account at
     /// `address`. todo: implement the storage at a specific block feature.
-    async fn get_storage_at<T: Into<NameOrAddress> + Send + Sync>(
+    async fn get_storage_at<T: Into<eAddress> + Send + Sync>(
         &self,
         account: T,
-        key: ethers::types::H256,
+        key: H256,
         block: Option<BlockId>,
-    ) -> Result<ethers::types::H256, ArbiterCoreError> {
-        let address: NameOrAddress = account.into();
-        let address = match address {
-            NameOrAddress::Name(_) => return Err(ArbiterCoreError::InvalidQueryError),
-            NameOrAddress::Address(address) => address,
-        };
+    ) -> Result<H256, ArbiterCoreError> {
+        let address: eAddress = account.into();
 
         let result = self
             .apply_cheatcode(Cheatcodes::Load {
@@ -896,35 +638,11 @@ impl Middleware for ArbiterMiddleware {
             CheatcodesReturn::Load { value } => {
                 // Convert the revm ruint type into big endian bytes, then convert into ethers
                 // H256.
-                let value: ethers::types::H256 = ethers::types::H256::from(value.to_be_bytes());
+                let value: H256 = H256::from(value.to_be_bytes());
                 Ok(value)
             }
             _ => unreachable!(),
         }
-    }
-
-    async fn subscribe_logs<'a>(
-        &'a self,
-        filter: &Filter,
-    ) -> Result<SubscriptionStream<'a, Self::Provider, eLog>, Self::Error>
-    where
-        <Self as Middleware>::Provider: PubsubClient,
-    {
-        let watcher = self.watch(filter).await?;
-        let id = watcher.id;
-        Ok(SubscriptionStream::new(id, self.provider())?)
-    }
-
-    async fn subscribe<T, R>(
-        &self,
-        _params: T,
-    ) -> Result<SubscriptionStream<'_, Self::Provider, R>, Self::Error>
-    where
-        T: Debug + Serialize + Send + Sync,
-        R: DeserializeOwned + Send + Sync,
-        <Self as Middleware>::Provider: PubsubClient,
-    {
-        todo!("This is not implemented yet, but `subscribe_logs` is.")
     }
 }
 
@@ -935,7 +653,7 @@ pub(crate) type PinBoxFut<'a, T> =
     Pin<Box<dyn Future<Output = Result<T, ProviderError>> + Send + 'a>>;
 
 // Because this is the exact same struct it will have the exact same memory
-// aliment allowing us to bypass the fact that ethers-rs doesn't export this
+// alignment allowing us to bypass the fact that ethers-rs doesn't export this
 // enum normally We box the TransactionReceipts to keep the enum small.
 #[allow(unused, missing_docs)]
 pub enum PendingTxState<'a> {
@@ -967,15 +685,4 @@ pub enum PendingTxState<'a> {
 
     /// Future has completed and should panic if polled again
     Completed,
-}
-
-// Certainly will go away with alloy-types
-/// Recast a B160 into an Address type
-/// # Arguments
-/// * `address` - B160 to recast. (B160)
-/// # Returns
-/// * `Address` - Recasted Address.
-#[inline]
-pub fn recast_address(address: Address) -> eAddress {
-    eAddress::from(address.into_array())
 }

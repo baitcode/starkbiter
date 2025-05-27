@@ -53,7 +53,7 @@ impl Fork {
         let disk_data: DiskData = serde_json::from_str(&data).unwrap();
 
         // Create a CacheDB instance
-        // let mut db = CacheDB::new(EmptyDB::default());
+        let mut db = CacheDB::new(EmptyDB::default());
 
         // Populate the CacheDB from the OutputData
         for (address, (info, storage_map)) in disk_data.raw {

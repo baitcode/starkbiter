@@ -31,10 +31,7 @@ use serde_json::Value;
 use tokio::{sync::broadcast::Receiver as BroadcastReceiver, task::JoinHandle};
 
 use super::*;
-use crate::{
-    environment::Broadcast,
-    middleware::{connection::revm_logs_to_ethers_logs, ArbiterMiddleware},
-};
+use crate::{environment::Broadcast, middleware::ArbiterMiddleware};
 
 pub(crate) type FilterDecoder =
     BTreeMap<String, (FilteredParams, Box<dyn Fn(&RawLog) -> String + Send + Sync>)>;

@@ -19,32 +19,28 @@
 use std::thread::{self, JoinHandle};
 
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
-// use ethers::{abi::AbiDecode, types::ValueOrArray};
-// use revm::{
-//     db::AccountState,
-//     inspector_handle_register,
-//     primitives::{Env, HashMap, B256},
-// };
-use sha2::digest::block_buffer::Block;
-use starknet::core::types::{BlockId, BlockTag, BroadcastedTransaction, Felt, TransactionReceipt};
-use starknet::core::utils::get_storage_var_address;
-use starknet_devnet_core::account::Account;
+
+// use starknet::core::types::{BlockId, BlockTag, Felt};
 use starknet_devnet_core::constants::{self, ETH_ERC20_CONTRACT_ADDRESS};
 use starknet_devnet_core::starknet::{starknet_config::StarknetConfig, Starknet};
 use starknet_devnet_core::state::{State, StateReader};
-use starknet_devnet_types::felt::{join_felts, split_biguint};
-use starknet_devnet_types::rpc::gas_modification::GasModificationRequest;
+use starknet_devnet_types::felt::join_felts;
+use starknet_devnet_types::rpc::transaction_receipt::FeeInUnits;
+use starknet_devnet_types::rpc::{
+    gas_modification::GasModificationRequest, transaction_receipt::TransactionReceipt,
+};
+
 use tokio::sync::broadcast::channel;
 
 use super::*;
-use crate::middleware::connection::revm_logs_to_ethers_logs;
-#[cfg_attr(doc, doc(hidden))]
-#[cfg_attr(doc, allow(unused_imports))]
-#[cfg(doc)]
-use crate::middleware::ArbiterMiddleware;
 
 pub mod instruction;
-use instruction::*;
+use instruction::{
+    Cheatcodes, CheatcodesReturn, EnvironmentData, Instruction, Outcome, ReceiptData,
+    TxExecutionResult,
+};
+
+mod utils;
 
 /// Alias for the sender of the channel for transmitting transactions.
 pub(crate) type InstructionSender = Sender<Instruction>;
@@ -265,7 +261,7 @@ impl Environment {
 
             // Initialize counters that are returned on some receipts.
             let mut transaction_index = 0_u64;
-            let mut last_executed_tx_gas = eU256::from(0);
+            let mut last_executed_gas_price = FeeInUnits::WEI(0);
             let mut cumulative_gas_per_block = eU256::from(0);
 
             // Loop over the instructions sent through the socket.
@@ -280,7 +276,8 @@ impl Environment {
                         address,
                         outcome_sender,
                     } => {
-                        let recast_address = eAddress::from(address.as_fixed_bytes());
+                        // starknet.
+
                         // TODO: weird account operation. discuss with team.
 
                         // match db.state.write()?.accounts.insert(recast_address, account) {
@@ -297,7 +294,7 @@ impl Environment {
                     } => {
                         // TODO: skip it
                         // Return the old block data in a `ReceiptData`
-                        let block = starknet.get_block(BlockId::Tag(BlockTag::Latest))?;
+                        let block = starknet.get_latest_block()?;
 
                         let receipt_data = ReceiptData {
                             block_number: block.block_number(),
@@ -365,38 +362,12 @@ impl Environment {
                             let recast_address = eAddress::from(address.as_fixed_bytes());
                             let state = starknet.get_state();
 
-                            // TODO: add support for other tokens
-                            let token_address = ETH_ERC20_CONTRACT_ADDRESS;
-
-                            let balance_var_key_low =
-                                get_storage_var_address("ERC20_balances", &[Felt::from(address)])?
-                                    .try_into()?;
-                            let balance_var_key_high = balance_var_key_low.next_storage_key()?;
-
-                            let current_value = join_felts(
-                                state.get_storage_at(token_address, balance_var_key_high),
-                                state.get_storage_at(token_address, balance_var_key_low),
+                            utils::mint_tokens_in_erc20_contract(
+                                &mut starknet,
+                                ETH_ERC20_CONTRACT_ADDRESS,
+                                &address,
+                                amount,
                             );
-
-                            let total_supply_key_low =
-                                get_storage_var_address("ERC20_total_supply", &[])?.try_into()?;
-                            let total_supply_key_high = total_supply_key_low.next_storage_key()?;
-
-                            let total_supply_low =
-                                state.get_storage_at(token_address, total_supply_key_low)?;
-                            let total_supply_high =
-                                state.get_storage_at(token_address, total_supply_key_high)?;
-
-                            let new_total_supply =
-                                join_felts(&total_supply_high, &total_supply_low) + amount;
-
-                            let (new_total_supply_high, new_total_supply_low) =
-                                split_biguint(new_total_supply);
-
-                            let (new_high, new_low) = split_biguint(current_value + amount);
-
-                            state.set_storage_at(token_address, balance_var_key_low, new_low)?;
-                            state.set_storage_at(token_address, balance_var_key_high, new_high)?;
 
                             outcome_sender
                                 .send(Ok(Outcome::CheatcodeReturn(CheatcodesReturn::Deal)))?;
@@ -423,14 +394,19 @@ impl Environment {
                             call.entry_point_selector,
                             call.calldata,
                         );
+                        // TODO: logs?
 
                         match res {
                             Ok(result) => {
-                                // logs?
-                                outcome_sender.send(Ok(Outcome::CallCompleted(result)))?;
+                                outcome_sender.send(Ok(Outcome::CallCompleted(
+                                    instruction::CallExecutionResult::Success(res),
+                                )))?;
                             }
                             Err(e) => {
-                                outcome_sender.send(Err(ArbiterCoreError::DevnetError(e)))?;
+                                outcome_sender.send(Ok(Outcome::CallCompleted(
+                                    // TODO: maybe pass error as is?
+                                    instruction::CallExecutionResult::Failure(e.to_string()),
+                                )))?;
                             }
                         }
                     }
@@ -455,72 +431,29 @@ impl Environment {
                     // A `Transaction` is state changing and will create events.
                     Instruction::Transaction { tx, outcome_sender } => {
                         // Set the tx_env and prepare to process it
-                        let outcome = match tx {
-                            BroadcastedTransaction::Invoke(tx) => {
-                                match starknet.add_invoke_transaction(tx) {
-                                    Ok(transaction_hash) => {
-                                        let receipt = starknet
-                                            .get_transaction_receipt_by_hash(&transaction_hash)?;
-                                        let res = TransactionResult::InvokeResult(transaction_hash);
-                                        if let TransactionReceipt::Invoke(r) = receipt {
-                                            last_executed_tx_gas = r.execution_resources.l2_gas;
-                                            cumulative_gas_per_block += last_executed_tx_gas;
-                                        } else {
-                                            panic!("Unexpected non Invoke transaction receipt");
-                                        }
-                                        Ok(Outcome::TransactionCompleted(res, receipt))
-                                    }
-                                    Err(e) => Err(ArbiterCoreError::DevnetError(e)),
-                                }
-                            }
-                            BroadcastedTransaction::DeployAccount(tx) => {
-                                match starknet.add_deploy_account_transaction(tx) {
-                                    Ok((transaction_hash, contract_address)) => {
-                                        let receipt = starknet
-                                            .get_transaction_receipt_by_hash(&transaction_hash)?;
-                                        let res = TransactionResult::DeployResult(
-                                            transaction_hash,
-                                            contract_address,
-                                        );
-                                        if let TransactionReceipt::Deploy(r) = receipt {
-                                            last_executed_tx_gas = r.execution_resources.l2_gas;
-                                            cumulative_gas_per_block += last_executed_tx_gas;
-                                        } else {
-                                            panic!("Unexpected non Deploy transaction receipt");
-                                        }
-                                        Ok(Outcome::TransactionCompleted(res, receipt))
-                                    }
-                                    Err(e) => Err(ArbiterCoreError::DevnetError(e)),
-                                }
-                            }
-                            BroadcastedTransaction::Declare(tx) => {
-                                match starknet.add_declare_transaction(tx) {
-                                    Ok((transaction_hash, class_hash)) => {
-                                        let receipt = starknet
-                                            .get_transaction_receipt_by_hash(&transaction_hash)?;
-                                        let res = TransactionResult::DeclareResult(
-                                            transaction_hash,
-                                            class_hash,
-                                        );
-                                        if let TransactionReceipt::Declare(r) = receipt {
-                                            last_executed_tx_gas = r.execution_resources.l2_gas;
-                                            cumulative_gas_per_block += last_executed_tx_gas;
-                                        } else {
-                                            panic!("Unexpected non Deploy transaction receipt");
-                                        }
-                                        Ok(Outcome::TransactionCompleted(res, receipt));
-                                    }
-                                    Err(e) => {
-                                        Err(ArbiterCoreError::DevnetError(e));
-                                    }
-                                }
-                            }
+
+                        let result = utils::execute_transaction(&mut starknet, tx)?;
+
+                        let tx_receipt = match result {
+                            TxExecutionResult::Revert(_, tx_receipt) => tx_receipt,
+                            TxExecutionResult::Success(_, tx_receipt) => tx_receipt,
                         };
+
+                        let receipt = match tx_receipt {
+                            TransactionReceipt::Deploy(receipt) => receipt.common,
+                            TransactionReceipt::L1Handler(receipt) => receipt.common,
+                            TransactionReceipt::Common(receipt) => receipt,
+                        };
+
+                        last_executed_gas_price = receipt.actual_fee;
+
+                        cumulative_gas_per_block += receipt.execution_resources.l2_gas;
 
                         let block_number = starknet
                             .get_block(BlockId::Tag(BlockTag::Latest))
                             .unwrap()
                             .block_number();
+
                         let receipt_data = ReceiptData {
                             block_number,
                             transaction_index,
@@ -529,8 +462,9 @@ impl Environment {
 
                         // TODO: Logging
                         // TODO: Event broadcasting?
-
-                        outcome_sender.send(outcome)?;
+                        // TODO: Why we send Result<Outcome> instead of just Outcome?
+                        outcome_sender
+                            .send(Ok(Outcome::TransactionCompleted(result, receipt_data)))?;
                         transaction_index += 1;
                     }
                     Instruction::Query {
@@ -539,23 +473,25 @@ impl Environment {
                     } => {
                         let outcome = match environment_data {
                             EnvironmentData::BlockNumber => match starknet.get_latest_block() {
-                                Ok(block) => {
-                                    Ok(Outcome::QueryReturn(block.block_number().0.to_string()))
-                                }
-                                Err(e) => {
-                                    return Err(ArbiterCoreError::InvalidQueryError(e));
-                                }
+                                Ok(block) => Ok(Outcome::QueryReturn(
+                                    block.block_number().0.to_be_bytes().to_vec(),
+                                )),
+                                Err(e) => Err(ArbiterCoreError::InvalidQueryError(e)),
                             },
                             EnvironmentData::BlockTimestamp => match starknet.get_latest_block() {
-                                Ok(block) => {
-                                    Ok(Outcome::QueryReturn(block.timestamp().0.to_string()))
-                                }
-                                Err(e) => {
-                                    return Err(ArbiterCoreError::InvalidQueryError(e));
-                                }
+                                Ok(block) => Ok(Outcome::QueryReturn(
+                                    block.timestamp().0.to_be_bytes().to_vec(),
+                                )),
+                                Err(e) => Err(ArbiterCoreError::InvalidQueryError(e)),
                             },
                             EnvironmentData::GasPrice => {
-                                Ok(Outcome::QueryReturn(last_executed_tx_gas.to_string()))
+                                if let FeeInUnits::WEI(value) = last_executed_gas_price {
+                                    Ok(Outcome::QueryReturn(value.amount.0.to_be_bytes().to_vec()))
+                                } else {
+                                    Err(ArbiterCoreError::InvalidQueryError(
+                                        "Gas price is invalid".into(),
+                                    ))
+                                }
                             }
                             EnvironmentData::Balance(address) => {
                                 // TODO: token symbol + classifier?
@@ -569,19 +505,19 @@ impl Environment {
                                     }
                                     Ok((low, high)) => {
                                         return Ok(Outcome::QueryReturn(
-                                            join_felts(&high, &low).to_str_radix(10),
+                                            join_felts(&high, &low).to_bytes_be(),
                                         ));
                                     }
                                 }
                             }
-                            EnvironmentData::TransactionCount(address) => {
+                            EnvironmentData::Nonce(address) => {
                                 let nonce = starknet.get_state().get_nonce_at(address);
                                 match nonce {
                                     Err(e) => {
                                         return Err(ArbiterCoreError::InvalidQueryError(e));
                                     }
                                     Ok(nonce) => {
-                                        return Ok(Outcome::QueryReturn(nonce.to_string()));
+                                        return Ok(Outcome::QueryReturn(nonce.0.to_bytes_be()));
                                     }
                                 }
                             }

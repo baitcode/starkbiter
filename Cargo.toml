@@ -32,7 +32,7 @@ path = "examples/minter/main.rs"
 # Arbiter local for development
 arbiter-bindings = { path = "bindings" }
 arbiter-core = { path = "core" }
-arbiter-core2 = { path = "core2" }
+# arbiter-core2 = { path = "core2" }
 arbiter-engine = { path = "engine" }
 arbiter-macros = { path = "macros" }
 

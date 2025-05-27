@@ -34,7 +34,7 @@
 // pub mod database;
 pub mod environment;
 pub mod errors;
-pub mod events;
+// pub mod events;
 pub mod middleware;
 
 use std::{

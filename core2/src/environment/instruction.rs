@@ -3,10 +3,13 @@
 //! [`middleware::ArbiterMiddleware`] and the [`Environment`].
 
 use starknet::core::types::{BlockId, BroadcastedTransaction, Felt, FunctionCall};
-use starknet_devnet_core::error::DevnetResult;
+
 use starknet_devnet_types::{
-    contract_address::ContractAddress, felt::ClassHash, num_bigint::BigUint,
-    patricia_key::PatriciaKey, starknet_api::transaction::TransactionHash,
+    contract_address::ContractAddress,
+    num_bigint::BigUint,
+    patricia_key::PatriciaKey,
+    rpc::transaction_receipt::{CommonTransactionReceipt, TransactionReceipt},
+    starknet_api::transaction::TransactionHash,
 };
 
 use super::*;
@@ -105,11 +108,20 @@ pub(crate) enum Instruction {
     },
 }
 
-pub(crate) enum TransactionResult {
-    /// The transaction was successful and the outcome is a `ReceiptData`.
-    InvokeResult(TransactionHash),
-    DeployResult(TransactionHash, ContractAddress),
-    DeclareResult(TransactionHash, ClassHash),
+type GasUsed = u64;
+
+pub enum TxExecutionResult {
+    /// The transaction was successful and the outcome is an `ExecutionResult`.
+    Success(TransactionHash, TransactionReceipt),
+    /// The transaction failed and the outcome is a `String` revert reason.
+    Revert(String, TransactionReceipt),
+}
+
+pub enum CallExecutionResult {
+    /// The call was successful and the outcome is a vector of `Felt` values.
+    Success(Vec<Felt>),
+    /// The call failed and the outcome is a `String` revert reason.
+    Failure(String),
 }
 
 /// [`Outcome`]s that can be sent back to the the client via the
@@ -133,7 +145,7 @@ pub(crate) enum Outcome {
 
     /// The outcome of a `Call` instruction that is used to provide the output
     /// of some [`EVM`] computation to the client.
-    CallCompleted(ExecutionResult),
+    CallCompleted(CallExecutionResult),
 
     /// The outcome of a [`Instruction::SetGasPrice`] instruction that is used
     /// to signify that the gas price was set successfully.
@@ -142,12 +154,12 @@ pub(crate) enum Outcome {
     /// The outcome of a `Transaction` instruction that is first unpacked to see
     /// if the result is successful, then it can be used to build a
     /// `TransactionReceipt` in the `Middleware`.
-    TransactionCompleted(TransactionResult, ReceiptData),
+    TransactionCompleted(TxExecutionResult, ReceiptData),
 
     /// The outcome of a `Query` instruction that carries a `String`
     /// representation of the data. Currently this may carry the block
     /// number, block timestamp, gas price, or balance of an account.
-    QueryReturn(String),
+    QueryReturn(Vec<u8>),
 
     /// The outcome of a `Stop` instruction that is used to signify that the
     /// [`Environment`] was stopped successfully.
@@ -174,9 +186,8 @@ pub(crate) enum EnvironmentData {
     /// The query is for the balance of an account given by the inner `Address`.
     Balance(eAddress),
 
-    // TODO: Rename this to `Nonce`?
     /// The query is for the nonce of an account given by the inner `Address`.
-    TransactionCount(eAddress),
+    Nonce(eAddress),
 
     /// Query for logs in a range of blocks.
     Logs {

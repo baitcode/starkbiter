@@ -9,9 +9,8 @@
 //! - [`FilterReceiver`]: Facilitates event watching based on certain filters.
 
 #![warn(missing_docs)]
-use std::{future::Future, pin::Pin, sync::Mutex, time::Duration};
+use std::{pin::Pin, sync::Mutex};
 
-use futures_timer::Delay;
 use futures_util::Stream;
 use serde::de::DeserializeOwned;
 use serde_json::value::RawValue;
@@ -19,19 +18,23 @@ use sha2::Sha256;
 use starknet::{
     core::{
         crypto::Signature,
-        types::{BlockId, BroadcastedTransaction, Felt, FunctionCall, TransactionWithReceipt},
+        types::{BlockId, BroadcastedTransaction, Felt, FunctionCall},
     },
     providers::{JsonRpcClient, ProviderError},
     signers::{LocalWallet, Signer, SignerInteractivityContext, SigningKey, VerifyingKey},
 };
+use starknet_devnet_types::{
+    contract_address::ContractAddress, num_bigint::BigUint, patricia_key::PatriciaKey,
+    rpc::transaction_receipt::TransactionReceipt,
+};
 
+use super::environment::instruction::TxExecutionResult;
 use super::*;
 use crate::environment::{instruction::*, Broadcast, Environment};
 
 pub mod connection;
 use connection::*;
 
-pub mod nonce_middleware;
 /// A middleware structure that integrates with `revm`.
 ///
 /// [`ArbiterMiddleware`] serves as a bridge between the application and
@@ -175,7 +178,7 @@ impl ArbiterMiddleware {
 
     /// Provides access to the associated Ethereum provider which is given by
     /// the [`Provider<Connection>`] for [`ArbiterMiddleware`].
-    fn provider(&self) -> Connection {
+    fn provider(&self) -> &Connection {
         &self.connection
     }
 
@@ -186,7 +189,7 @@ impl ArbiterMiddleware {
         block_number: impl Into<eU256>,
         block_timestamp: impl Into<eU256>,
     ) -> Result<ReceiptData, ArbiterCoreError> {
-        let provider = self.provider().as_ref();
+        let provider = self.provider();
         provider
             .instruction_sender
             .upgrade()
@@ -203,30 +206,12 @@ impl ArbiterMiddleware {
         }
     }
 
-    /// Returns the timestamp of the current block.
-    pub async fn get_block_timestamp(&self) -> Result<eU256, ArbiterCoreError> {
-        let provider = self.provider().as_ref();
-        provider
-            .instruction_sender
-            .upgrade()
-            .ok_or(ArbiterCoreError::UpgradeSenderError)?
-            .send(Instruction::Query {
-                environment_data: EnvironmentData::BlockTimestamp,
-                outcome_sender: provider.outcome_sender.clone(),
-            })?;
-
-        match provider.outcome_receiver.recv()?? {
-            Outcome::QueryReturn(outcome) => Ok(eU256::from_str_radix(outcome.as_ref(), 10)?),
-            _ => unreachable!(),
-        }
-    }
-
     /// Sends a cheatcode instruction to the environment.
     pub async fn apply_cheatcode(
         &self,
         cheatcode: Cheatcodes,
     ) -> Result<CheatcodesReturn, ArbiterCoreError> {
-        let provider = self.provider.as_ref();
+        let provider = self.provider();
         provider
             .instruction_sender
             .upgrade()
@@ -256,7 +241,7 @@ impl ArbiterMiddleware {
     /// [`EnvironmentParameters`] `gas_settings` field set to
     /// [`GasSettings::UserControlled`].
     pub async fn set_gas_price(&self, gas_price: eU256) -> Result<(), ArbiterCoreError> {
-        let provider = self.provider.as_ref();
+        let provider = self.provider();
         provider
             .instruction_sender
             .upgrade()
@@ -276,7 +261,7 @@ impl ArbiterMiddleware {
 
     /// Returns a reference to the inner middleware of which there is none when
     /// using [`ArbiterMiddleware`] so we relink to `Self`
-    fn inner(&self) -> &Self::Inner {
+    fn inner(&self) -> &Connection {
         &self.provider
     }
 
@@ -298,19 +283,15 @@ impl ArbiterMiddleware {
         &self,
         tx: T,
         _block: Option<BlockId>,
-    ) -> Result<TransactionWithReceipt<'_, Self::Provider>, Self::Error> {
+    ) -> Result<TransactionReceipt, ArbiterCoreError> {
         trace!("Building transaction");
-
-        // Check the `to` field of the transaction to determine if it is a call or a
-        // deploy. If there is no `to` field, then it is a `Deploy` else it is a
-        // `Call`.
 
         let instruction = Instruction::Transaction {
             tx: tx.into(),
-            outcome_sender: self.provider.as_ref().outcome_sender.clone(),
+            outcome_sender: self.provider().outcome_sender.clone(),
         };
 
-        let provider = self.provider.as_ref();
+        let provider = self.provider();
         provider
             .instruction_sender
             .upgrade()
@@ -321,138 +302,8 @@ impl ArbiterMiddleware {
 
         if let Outcome::TransactionCompleted(execution_result, receipt_data) = outcome {
             match execution_result {
-                ExecutionResult::Revert { gas_used, output } => {
-                    return Err(ArbiterCoreError::ExecutionRevert {
-                        gas_used,
-                        output: output.to_vec(),
-                    });
-                }
-                ExecutionResult::Halt { reason, gas_used } => {
-                    return Err(ArbiterCoreError::ExecutionHalt { reason, gas_used });
-                }
-                ExecutionResult::Success {
-                    output,
-                    gas_used,
-                    logs,
-                    ..
-                } => {
-                    // TODO: This is why we need the signer middleware
-                    // Note that this is technically not the correct construction on the tx hash
-                    // but until we increment the nonce correctly this will do
-                    let sender = self.address();
-
-                    let logs = revm_logs_to_ethers_logs(logs, &receipt_data);
-                    let to: Option<eAddress> = match tx_env.transact_to {
-                        TransactTo::Call(address) => Some(address.into_array().into()),
-                        TransactTo::Create(_) => None,
-                    };
-
-                    match output {
-                        Output::Create(_, address) => {
-                            let tx_receipt = TransactionReceipt {
-                                block_hash: None,
-                                block_number: Some(receipt_data.block_number),
-                                contract_address: Some(recast_address(address.unwrap())),
-                                logs: logs.clone(),
-                                from: sender,
-                                gas_used: Some(gas_used.into()),
-                                effective_gas_price: Some(
-                                    tx_env.clone().gas_price.to_be_bytes().into(),
-                                ),
-                                transaction_hash: H256::default(),
-                                to,
-                                cumulative_gas_used: receipt_data.cumulative_gas_per_block,
-                                status: Some(1.into()),
-                                root: None,
-                                logs_bloom: {
-                                    let mut bloom = Bloom::default();
-                                    for log in &logs {
-                                        bloom.accrue(BloomInput::Raw(&log.address.0));
-                                        for topic in log.topics.iter() {
-                                            bloom.accrue(BloomInput::Raw(topic.as_bytes()));
-                                        }
-                                    }
-                                    bloom
-                                },
-                                transaction_type: match tx {
-                                    TypedTransaction::Eip2930(_) => Some(1.into()),
-                                    _ => None,
-                                },
-                                transaction_index: receipt_data.transaction_index,
-                                ..Default::default()
-                            };
-
-                            // TODO: I'm not sure we need to set the confirmations.
-                            let mut pending_tx = PendingTransaction::new(
-                                ethers::types::H256::zero(),
-                                self.provider(),
-                            )
-                            .interval(Duration::ZERO)
-                            .confirmations(0);
-
-                            let state_ptr: *mut PendingTxState =
-                                &mut pending_tx as *mut _ as *mut PendingTxState;
-
-                            // Modify the value (this assumes you have access to the enum variants)
-                            unsafe {
-                                *state_ptr = PendingTxState::CheckingReceipt(Some(tx_receipt));
-                            }
-
-                            Ok(pending_tx)
-                        }
-                        Output::Call(_) => {
-                            let tx_receipt = TransactionReceipt {
-                                block_hash: None,
-                                block_number: Some(receipt_data.block_number),
-                                contract_address: None,
-                                logs: logs.clone(),
-                                from: sender,
-                                gas_used: Some(gas_used.into()),
-                                effective_gas_price: Some(
-                                    tx_env.clone().gas_price.to_be_bytes().into(),
-                                ),
-                                transaction_hash: H256::default(),
-                                to,
-                                cumulative_gas_used: receipt_data.cumulative_gas_per_block,
-                                status: Some(1.into()),
-                                root: None,
-                                logs_bloom: {
-                                    let mut bloom = Bloom::default();
-                                    for log in &logs {
-                                        bloom.accrue(BloomInput::Raw(&log.address.0));
-                                        for topic in log.topics.iter() {
-                                            bloom.accrue(BloomInput::Raw(topic.as_bytes()));
-                                        }
-                                    }
-                                    bloom
-                                },
-                                transaction_type: match tx {
-                                    TypedTransaction::Eip2930(_) => Some(1.into()),
-                                    _ => None,
-                                },
-                                transaction_index: receipt_data.transaction_index,
-                                ..Default::default()
-                            };
-
-                            let mut pending_tx = PendingTransaction::new(
-                                ethers::types::H256::zero(),
-                                self.provider(),
-                            )
-                            .interval(Duration::ZERO)
-                            .confirmations(0);
-
-                            let state_ptr: *mut PendingTxState =
-                                &mut pending_tx as *mut _ as *mut PendingTxState;
-
-                            // Modify the value (this assumes you have access to the enum variants)
-                            unsafe {
-                                *state_ptr = PendingTxState::CheckingReceipt(Some(tx_receipt));
-                            }
-
-                            Ok(pending_tx)
-                        }
-                    }
-                }
+                TxExecutionResult::Success(res, tx_receipt) => Ok(tx_receipt),
+                TxExecutionResult::Revert(reason, tx_receipt) => Ok(tx_receipt),
             }
         } else {
             unreachable!()
@@ -469,46 +320,35 @@ impl ArbiterMiddleware {
     /// be documented in the `revm` DB.
     async fn call(
         &self,
-        call: &FunctionCall,
+        call: FunctionCall,
         _block: Option<BlockId>,
-    ) -> Result<eBytes, Self::Error> {
+    ) -> Result<Vec<Felt>, ArbiterCoreError> {
         trace!("Building call");
 
         let instruction = Instruction::Call {
             call,
-            outcome_sender: self.provider().as_ref().outcome_sender.clone(),
+            outcome_sender: self.provider().outcome_sender.clone(),
         };
         self.provider()
-            .as_ref()
             .instruction_sender
             .upgrade()
             .ok_or(ArbiterCoreError::UpgradeSenderError)?
             .send(instruction)?;
 
-        let outcome = self.provider().as_ref().outcome_receiver.recv()??;
+        let outcome = self.provider().outcome_receiver.recv()??;
 
         if let Outcome::CallCompleted(execution_result) = outcome {
             match execution_result {
-                ExecutionResult::Revert { gas_used, output } => {
-                    return Err(ArbiterCoreError::ExecutionRevert {
-                        gas_used,
-                        output: output.to_vec(),
-                    });
-                }
-                ExecutionResult::Halt { reason, gas_used } => {
-                    return Err(ArbiterCoreError::ExecutionHalt { reason, gas_used });
-                }
-                ExecutionResult::Success { output, .. } => {
-                    return Ok(eBytes::from(output.data().to_vec()));
-                }
+                CallExecutionResult::Success(felts) => Ok(felts),
+                CallExecutionResult::Failure(_) => Err(ArbiterCoreError::CallError {}), // TODO: add data like reason and logs
             }
         } else {
             unreachable!()
         }
     }
 
-    async fn get_gas_price(&self) -> Result<eU256, Self::Error> {
-        let provider = self.provider.as_ref();
+    async fn get_gas_price(&self) -> Result<u128, ArbiterCoreError> {
+        let provider = self.provider();
         provider
             .instruction_sender
             .upgrade()
@@ -519,13 +359,19 @@ impl ArbiterMiddleware {
             })?;
 
         match provider.outcome_receiver.recv()?? {
-            Outcome::QueryReturn(outcome) => Ok(eU256::from_str_radix(outcome.as_ref(), 10)?),
+            Outcome::QueryReturn(outcome) => {
+                let bytes = outcome
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| ArbiterCoreError::InvalidQueryError)?; // TODO: Might actually make sense to preserve error
+                Ok(u128::from_be_bytes(bytes))
+            }
             _ => unreachable!(),
         }
     }
 
-    async fn get_block_number(&self) -> Result<u64, Self::Error> {
-        let provider = self.provider().as_ref();
+    async fn get_block_number(&self) -> Result<u64, ArbiterCoreError> {
+        let provider = self.provider();
         provider
             .instruction_sender
             .upgrade()
@@ -534,8 +380,15 @@ impl ArbiterMiddleware {
                 environment_data: EnvironmentData::BlockNumber,
                 outcome_sender: provider.outcome_sender.clone(),
             })?;
+
         match provider.outcome_receiver.recv()?? {
-            Outcome::QueryReturn(outcome) => Ok(u64::from_str_radix(outcome.as_ref(), 10)?),
+            Outcome::QueryReturn(outcome) => {
+                let bytes = outcome
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| ArbiterCoreError::InvalidQueryError)?; // TODO: Might actually make sense to preserve error
+                Ok(u64::from_be_bytes(bytes))
+            }
             _ => unreachable!(),
         }
     }
@@ -544,13 +397,13 @@ impl ArbiterMiddleware {
         &self,
         from: T,
         block: Option<BlockId>,
-    ) -> Result<eU256, Self::Error> {
+    ) -> Result<BigUint, ArbiterCoreError> {
         if block.is_some() {
             return Err(ArbiterCoreError::InvalidQueryError);
         }
         let address: eAddress = from.into();
 
-        let provider = self.provider.as_ref();
+        let provider = self.provider();
         provider
             .instruction_sender
             .upgrade()
@@ -561,30 +414,66 @@ impl ArbiterMiddleware {
             })?;
 
         match provider.outcome_receiver.recv()?? {
-            Outcome::QueryReturn(outcome) => Ok(eU256::from_str_radix(outcome.as_ref(), 10)?),
+            Outcome::QueryReturn(outcome) => {
+                let bytes = outcome
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| ArbiterCoreError::InvalidQueryError)?; // TODO: Might actually make sense to preserve error
+                Ok(BigUint::from_bytes_be(bytes))
+            }
             _ => unreachable!(),
         }
     }
 
-    /// Returns the nonce of the address
-    async fn get_transaction_count<T: Into<eAddress> + Send + Sync>(
-        &self,
-        from: T,
-        _block: Option<BlockId>,
-    ) -> Result<eU256, Self::Error> {
-        let address: eAddress = from.into();
-        let provider = self.provider.as_ref();
+    /// Returns the timestamp of the current block.
+    pub async fn get_block_timestamp(&self) -> Result<u64, ArbiterCoreError> {
+        let provider = self.provider();
         provider
             .instruction_sender
             .upgrade()
             .ok_or(ArbiterCoreError::UpgradeSenderError)?
             .send(Instruction::Query {
-                environment_data: EnvironmentData::TransactionCount(address),
+                environment_data: EnvironmentData::BlockTimestamp,
                 outcome_sender: provider.outcome_sender.clone(),
             })?;
 
         match provider.outcome_receiver.recv()?? {
-            Outcome::QueryReturn(outcome) => Ok(eU256::from_str_radix(outcome.as_ref(), 10)?),
+            Outcome::QueryReturn(outcome) => {
+                let bytes = outcome
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| ArbiterCoreError::InvalidQueryError)?; // TODO: Might actually make sense to preserve error
+                Ok(u64::from_be_bytes(bytes))
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    /// Returns the nonce of the address
+    async fn get_nonce<T: Into<eAddress> + Send + Sync>(
+        &self,
+        from: T,
+        _block: Option<BlockId>,
+    ) -> Result<Felt, ArbiterCoreError> {
+        let address: eAddress = from.into();
+        let provider = self.provider();
+        provider
+            .instruction_sender
+            .upgrade()
+            .ok_or(ArbiterCoreError::UpgradeSenderError)?
+            .send(Instruction::Query {
+                environment_data: EnvironmentData::Nonce(address),
+                outcome_sender: provider.outcome_sender.clone(),
+            })?;
+
+        match provider.outcome_receiver.recv()?? {
+            Outcome::QueryReturn(outcome) => {
+                let bytes = outcome
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| ArbiterCoreError::InvalidQueryError)?; // TODO: Might actually make sense to preserve error
+                Ok(Felt::from_bytes_be(bytes))
+            }
             _ => unreachable!(),
         }
     }
@@ -601,33 +490,22 @@ impl ArbiterMiddleware {
         &self,
         tx: &mut BroadcastedTransaction,
         _block: Option<BlockId>,
-    ) -> Result<(), Self::Error> {
-        // Set the `from` field of the transaction to the client address
-        if tx.from().is_none() {
-            tx.set_from(self.address());
-        }
-
-        // get the gas usage price
-        if tx.gas_price().is_none() {
-            let gas_price = self.get_gas_price().await?;
-            tx.set_gas_price(gas_price);
-        }
+    ) -> Result<(), ArbiterCoreError> {
+        // Do nothing for now
 
         Ok(())
     }
     /// Fetches the value stored at the storage slot `key` for an account at
     /// `address`. todo: implement the storage at a specific block feature.
-    async fn get_storage_at<T: Into<eAddress> + Send + Sync>(
+    async fn get_storage_at<T: Into<ContractAddress> + Send + Sync>(
         &self,
         account: T,
-        key: H256,
-        block: Option<BlockId>,
-    ) -> Result<H256, ArbiterCoreError> {
-        let address: eAddress = account.into();
-
+        key: PatriciaKey,
+        block: BlockId,
+    ) -> Result<Felt, ArbiterCoreError> {
         let result = self
             .apply_cheatcode(Cheatcodes::Load {
-                account: address,
+                account: account.into(),
                 key,
                 block,
             })
@@ -635,54 +513,8 @@ impl ArbiterMiddleware {
             .unwrap();
 
         match result {
-            CheatcodesReturn::Load { value } => {
-                // Convert the revm ruint type into big endian bytes, then convert into ethers
-                // H256.
-                let value: H256 = H256::from(value.to_be_bytes());
-                Ok(value)
-            }
+            CheatcodesReturn::Load { value } => Ok(value),
             _ => unreachable!(),
         }
     }
-}
-
-#[cfg(target_arch = "wasm32")]
-pub(crate) type PinBoxFut<'a, T> = Pin<Box<dyn Future<Output = Result<T, ProviderError>> + 'a>>;
-#[cfg(not(target_arch = "wasm32"))]
-pub(crate) type PinBoxFut<'a, T> =
-    Pin<Box<dyn Future<Output = Result<T, ProviderError>> + Send + 'a>>;
-
-// Because this is the exact same struct it will have the exact same memory
-// alignment allowing us to bypass the fact that ethers-rs doesn't export this
-// enum normally We box the TransactionReceipts to keep the enum small.
-#[allow(unused, missing_docs)]
-pub enum PendingTxState<'a> {
-    /// Initial delay to ensure the GettingTx loop doesn't immediately fail
-    InitialDelay(Pin<Box<Delay>>),
-
-    /// Waiting for interval to elapse before calling API again
-    PausedGettingTx,
-
-    /// Polling The blockchain to see if the Tx has confirmed or dropped
-    GettingTx(PinBoxFut<'a, Option<Transaction>>),
-
-    /// Waiting for interval to elapse before calling API again
-    PausedGettingReceipt,
-
-    /// Polling the blockchain for the receipt
-    GettingReceipt(PinBoxFut<'a, Option<TransactionReceipt>>),
-
-    /// If the pending tx required only 1 conf, it will return early. Otherwise
-    /// it will proceed to the next state which will poll the block number
-    /// until there have been enough confirmations
-    CheckingReceipt(Option<TransactionReceipt>),
-
-    /// Waiting for interval to elapse before calling API again
-    PausedGettingBlockNumber(Option<TransactionReceipt>),
-
-    /// Polling the blockchain for the current block number
-    GettingBlockNumber(PinBoxFut<'a, U64>, Option<TransactionReceipt>),
-
-    /// Future has completed and should panic if polled again
-    Completed,
 }

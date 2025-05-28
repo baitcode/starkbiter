@@ -13,18 +13,19 @@ readme = "../README.md"
 
 # Dependencies for the release build
 [dependencies]
-arbiter-bindings.workspace = true
+# arbiter-bindings.workspace = true
 
 # Ethereum and EVM
 # ethers.workspace = true
 # revm.workspace = true
 # revm-primitives.workspace = true
 
-# starknet = { version = "0.15.1" }
+starknet = "=0.14.0"
+starknet-core = "=0.13.0"
+starknet-types-core = "0.1.5"
 starknet-devnet-core = { path = "/Users/baitcode/work/starknet/starknet-devnet/crates/starknet-devnet-core" }
 starknet-devnet-types = { path = "/Users/baitcode/work/starknet/starknet-devnet/crates/starknet-devnet-types" }
 sha2 = { version = "0.10.7" }
-
 
 # Serialization
 serde.workspace = true

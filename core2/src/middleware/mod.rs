@@ -11,21 +11,27 @@
 #![warn(missing_docs)]
 use std::{pin::Pin, sync::Mutex};
 
-use futures_util::Stream;
-use serde::de::DeserializeOwned;
-use serde_json::value::RawValue;
-use sha2::Sha256;
 use starknet::{
     core::{
         crypto::Signature,
-        types::{BlockId, BroadcastedTransaction, Felt, FunctionCall},
+        types::{BlockId, Felt},
     },
     providers::{JsonRpcClient, ProviderError},
     signers::{LocalWallet, Signer, SignerInteractivityContext, SigningKey, VerifyingKey},
 };
+use starknet_devnet_core::constants;
 use starknet_devnet_types::{
-    contract_address::ContractAddress, num_bigint::BigUint, patricia_key::PatriciaKey,
-    rpc::transaction_receipt::TransactionReceipt,
+    num_bigint::BigUint,
+    rpc::{
+        gas_modification::GasModificationRequest,
+        transaction_receipt::TransactionReceipt,
+        transactions::{BroadcastedTransaction, FunctionCall},
+    },
+    starknet_api::{
+        block::{BlockNumber, BlockTimestamp},
+        core::{ClassHash, ContractAddress},
+        state::StorageKey,
+    },
 };
 
 use super::environment::instruction::TxExecutionResult;
@@ -64,115 +70,55 @@ use connection::*;
 #[derive(Debug)]
 pub struct ArbiterMiddleware {
     connection: Connection,
-    wallet: EOA,
+    account_address: ContractAddress,
+    account_signing_key: SigningKey,
     /// An optional label for the middleware instance
     #[allow(unused)]
     pub label: Option<String>,
 }
 
-#[async_trait]
-impl Signer for ArbiterMiddleware {
-    type GetPublicKeyError = ArbiterCoreError;
-    type SignError = ArbiterCoreError;
-
-    async fn get_public_key(&self) -> Result<VerifyingKey, Self::GetPublicKeyError> {
-        match self.wallet {
-            // TODO: new error maybe?
-            EOA::Forked(_) => Err(ArbiterCoreError::ForkedEOASignError),
-            EOA::Wallet(wallet) => wallet.get_public_key(),
-        }
-    }
-
-    async fn sign_hash(&self, hash: &Felt) -> Result<Signature, Self::SignError> {
-        match self.wallet {
-            EOA::Forked(_) => Err(ArbiterCoreError::ForkedEOASignError),
-            EOA::Wallet(wallet) => wallet.sign_hash(hash),
-        }
-    }
-
-    fn is_interactive(&self, context: SignerInteractivityContext<'_>) -> bool {
-        return true;
-    }
-}
-
-/// A wrapper enum for the two types of accounts that can be used with the
-/// middleware.
-#[derive(Debug, Clone)]
-pub enum EOA {
-    /// The [`Forked`] variant is used for the forked EOA,
-    /// allowing us to treat them as mock accounts that we can still authorize
-    /// transactions with that we would be unable to do on mainnet.
-    Forked(eAddress),
-    /// The [`Wallet`] variant "real" in the sense that is has a valid private
-    /// key from the provided seed
-    Wallet(LocalWallet),
-}
-
 impl ArbiterMiddleware {
     pub fn new(
         environment: &Environment,
-        seed_and_label: Option<&str>,
+        seed_and_label: Option<Felt>,
     ) -> Result<Arc<Self>, ArbiterCoreError> {
         let connection = Connection::from(environment);
 
         let signing_key = if let Some(seed) = seed_and_label {
-            // seed_and_label
-            let mut hasher = Sha256::new();
-            hasher.update(seed);
-            let hashed = hasher.finalize();
             // TODO: probably will fail
-            SigningKey::from_secret_scalar(hashed.into())
+            SigningKey::from_secret_scalar(seed)
         } else {
             SigningKey::from_random()
         };
 
-        let wallet = LocalWallet::from_signing_key(signing_key);
+        let pk = signing_key.verifying_key().scalar();
+
+        // .map_err(|e| ArbiterCoreError::DevnetError(e.into()))?;
 
         connection
             .instruction_sender
             .upgrade() // TODO: WHY?!
             .ok_or(ArbiterCoreError::UpgradeSenderError)?
             .send(Instruction::AddAccount {
-                address: wallet.address(),
+                public_key: pk,
+                class_hash: ClassHash(constants::ARGENT_CONTRACT_CLASS_HASH),
                 outcome_sender: connection.outcome_sender.clone(),
             })?;
 
-        connection.outcome_receiver.recv()??;
+        let address = match connection.outcome_receiver.recv()?? {
+            Outcome::AddAccountCompleted(address) => address,
+            _ => unreachable!(),
+        };
+
         info!(
             "Created new `ArbiterMiddleware` instance from a fork -- attached to environment labeled: {:?}",
             environment.parameters.label
         );
         Ok(Arc::new(Self {
-            wallet: EOA::Wallet(wallet),
+            account_address: address,
+            account_signing_key: signing_key,
             connection,
             label: seed_and_label.map(|s| s.to_string()),
-        }))
-    }
-
-    // TODO: This needs to have the label retrieved from the fork config.
-    /// Creates a new instance of `ArbiterMiddleware` from a forked EOA.
-    pub fn new_from_forked_eoa(
-        environment: &Environment,
-        forked_eoa: eAddress,
-    ) -> Result<Arc<Self>, ArbiterCoreError> {
-        let instruction_sender = &Arc::clone(&environment.socket.instruction_sender);
-        let (outcome_sender, outcome_receiver) = crossbeam_channel::unbounded();
-
-        let connection = Connection {
-            instruction_sender: Arc::downgrade(instruction_sender),
-            outcome_sender,
-            outcome_receiver: outcome_receiver.clone(),
-            event_sender: environment.socket.event_broadcaster.clone(),
-            filter_receivers: Arc::new(Mutex::new(HashMap::new())),
-        };
-        info!(
-            "Created new `ArbiterMiddleware` instance from a fork -- attached to environment labeled: {:?}",
-            environment.parameters.label
-        );
-        Ok(Arc::new(Self {
-            wallet: EOA::Forked(forked_eoa),
-            connection,
-            label: None,
         }))
     }
 
@@ -186,8 +132,8 @@ impl ArbiterMiddleware {
     /// [`Environment`] to whatever they may choose at any time.
     pub fn update_block(
         &self,
-        block_number: impl Into<eU256>,
-        block_timestamp: impl Into<eU256>,
+        block_number: impl Into<BlockNumber>,
+        block_timestamp: impl Into<BlockTimestamp>,
     ) -> Result<ReceiptData, ArbiterCoreError> {
         let provider = self.provider();
         provider
@@ -229,25 +175,25 @@ impl ArbiterMiddleware {
 
     /// Returns the address of the wallet/signer given to a client.
     /// Matches on the [`EOA`] variant of the [`ArbiterMiddleware`] struct.
-    pub fn address(&self) -> eAddress {
-        match &self.wallet {
-            EOA::Forked(address) => *address,
-            EOA::Wallet(wallet) => wallet.address(),
-        }
+    pub fn address(&self) -> ContractAddress {
+        self.account_address
     }
 
     /// Allows a client to set a gas price for transactions.
     /// This can only be done if the [`Environment`] has
     /// [`EnvironmentParameters`] `gas_settings` field set to
     /// [`GasSettings::UserControlled`].
-    pub async fn set_gas_price(&self, gas_price: eU256) -> Result<(), ArbiterCoreError> {
+    pub async fn set_gas_price(
+        &self,
+        gas_modification_request: GasModificationRequest,
+    ) -> Result<(), ArbiterCoreError> {
         let provider = self.provider();
         provider
             .instruction_sender
             .upgrade()
             .ok_or(ArbiterCoreError::UpgradeSenderError)?
             .send(Instruction::SetGasPrice {
-                gas_price,
+                gas_modification_request,
                 outcome_sender: provider.outcome_sender.clone(),
             })?;
         match provider.outcome_receiver.recv()?? {
@@ -262,12 +208,12 @@ impl ArbiterMiddleware {
     /// Returns a reference to the inner middleware of which there is none when
     /// using [`ArbiterMiddleware`] so we relink to `Self`
     fn inner(&self) -> &Connection {
-        &self.provider
+        &self.connection
     }
 
     /// Provides the default sender address for transactions, i.e., the address
     /// of the wallet/signer given to a client of the [`Environment`].
-    fn default_sender(&self) -> Option<eAddress> {
+    fn default_sender(&self) -> Option<ContractAddress> {
         Some(self.address())
     }
 
@@ -393,7 +339,7 @@ impl ArbiterMiddleware {
         }
     }
 
-    async fn get_balance<T: Into<eAddress> + Send + Sync>(
+    async fn get_balance<T: Into<ContractAddress> + Send + Sync>(
         &self,
         from: T,
         block: Option<BlockId>,
@@ -401,7 +347,6 @@ impl ArbiterMiddleware {
         if block.is_some() {
             return Err(ArbiterCoreError::InvalidQueryError);
         }
-        let address: eAddress = from.into();
 
         let provider = self.provider();
         provider
@@ -409,7 +354,7 @@ impl ArbiterMiddleware {
             .upgrade()
             .ok_or(ArbiterCoreError::UpgradeSenderError)?
             .send(Instruction::Query {
-                environment_data: EnvironmentData::Balance(address),
+                environment_data: EnvironmentData::Balance(from.into()),
                 outcome_sender: provider.outcome_sender.clone(),
             })?;
 
@@ -450,19 +395,18 @@ impl ArbiterMiddleware {
     }
 
     /// Returns the nonce of the address
-    async fn get_nonce<T: Into<eAddress> + Send + Sync>(
+    async fn get_nonce<T: Into<ContractAddress> + Send + Sync>(
         &self,
         from: T,
         _block: Option<BlockId>,
     ) -> Result<Felt, ArbiterCoreError> {
-        let address: eAddress = from.into();
         let provider = self.provider();
         provider
             .instruction_sender
             .upgrade()
             .ok_or(ArbiterCoreError::UpgradeSenderError)?
             .send(Instruction::Query {
-                environment_data: EnvironmentData::Nonce(address),
+                environment_data: EnvironmentData::Nonce(from.into()),
                 outcome_sender: provider.outcome_sender.clone(),
             })?;
 
@@ -500,7 +444,7 @@ impl ArbiterMiddleware {
     async fn get_storage_at<T: Into<ContractAddress> + Send + Sync>(
         &self,
         account: T,
-        key: PatriciaKey,
+        key: StorageKey,
         block: BlockId,
     ) -> Result<Felt, ArbiterCoreError> {
         let result = self

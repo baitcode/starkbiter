@@ -2,14 +2,20 @@
 //! communicate instructions and their outcomes between the
 //! [`middleware::ArbiterMiddleware`] and the [`Environment`].
 
-use starknet::core::types::{BlockId, BroadcastedTransaction, Felt, FunctionCall};
+use starknet::core::types::{BlockId, Felt};
 
 use starknet_devnet_types::{
-    contract_address::ContractAddress,
+    felt::{Key, TransactionHash},
     num_bigint::BigUint,
-    patricia_key::PatriciaKey,
-    rpc::transaction_receipt::{CommonTransactionReceipt, TransactionReceipt},
-    starknet_api::transaction::TransactionHash,
+    rpc::{
+        transaction_receipt::TransactionReceipt,
+        transactions::{BroadcastedTransaction, FunctionCall},
+    },
+    starknet_api::{
+        block::{BlockNumber, BlockTimestamp},
+        core::{ClassHash, ContractAddress},
+        state::StorageKey,
+    },
 };
 
 use super::*;
@@ -35,8 +41,9 @@ pub(crate) enum Instruction {
     /// [`Environment`].
     AddAccount {
         /// The address of the account to add to the [`EVM`].
-        address: eAddress,
+        public_key: Felt,
 
+        class_hash: ClassHash,
         /// The sender used to to send the outcome of the account addition back
         /// to.
         outcome_sender: OutcomeSender,
@@ -46,10 +53,10 @@ pub(crate) enum Instruction {
     /// [`Environment`].
     BlockUpdate {
         /// The block number to update the [`EVM`] to.
-        block_number: eU256,
+        block_number: BlockNumber,
 
         /// The block timestamp to update the [`EVM`] to.
-        block_timestamp: eU256,
+        block_timestamp: BlockTimestamp,
 
         /// The sender used to to send the outcome of the block update back to.
         outcome_sender: OutcomeSender,
@@ -87,7 +94,7 @@ pub(crate) enum Instruction {
     /// A `SetGasPrice` is used to set the gas price of the [`EVM`].
     SetGasPrice {
         /// The gas price to set the [`EVM`] to.
-        gas_price: eU256,
+        gas_modification_request: GasModificationRequest,
 
         /// The sender used to to send the outcome of the gas price setting back
         /// to.
@@ -110,6 +117,7 @@ pub(crate) enum Instruction {
 
 type GasUsed = u64;
 
+#[derive(Debug, Clone, Serialize)]
 pub enum TxExecutionResult {
     /// The transaction was successful and the outcome is an `ExecutionResult`.
     Success(TransactionHash, TransactionReceipt),
@@ -117,6 +125,7 @@ pub enum TxExecutionResult {
     Revert(String, TransactionReceipt),
 }
 
+#[derive(Debug, Clone, Serialize)]
 pub enum CallExecutionResult {
     /// The call was successful and the outcome is a vector of `Felt` values.
     Success(Vec<Felt>),
@@ -128,11 +137,11 @@ pub enum CallExecutionResult {
 /// [`Socket`].
 /// These outcomes can be from `Call`, `Transaction`, or `BlockUpdate`
 /// instructions sent to the [`Environment`]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize)]
 pub(crate) enum Outcome {
     /// The outcome of an [`Instruction::AddAccount`] instruction that is used
     /// to signify that the account was added successfully.
-    AddAccountCompleted,
+    AddAccountCompleted(ContractAddress),
 
     /// The outcome of a `BlockUpdate` instruction that is used to provide a
     /// non-error output of updating the block number and timestamp of the
@@ -184,15 +193,14 @@ pub(crate) enum EnvironmentData {
     GasPrice,
 
     /// The query is for the balance of an account given by the inner `Address`.
-    Balance(eAddress),
+    Balance(ContractAddress),
 
     /// The query is for the nonce of an account given by the inner `Address`.
-    Nonce(eAddress),
+    Nonce(ContractAddress),
 
     /// Query for logs in a range of blocks.
     Logs {
-        /// The filter to use to query for logs
-        filter: EventFilter,
+        // filter: EventFilter,
     },
 }
 
@@ -202,13 +210,13 @@ pub(crate) enum EnvironmentData {
 pub struct ReceiptData {
     /// `block_number` is the number of the block in which the transaction was
     /// included.
-    pub block_number: u64,
+    pub block_number: BlockNumber,
     /// `transaction_index` is the index position of the transaction in the
     /// block.
     pub transaction_index: u64,
     /// `cumulative_gas_per_block` is the total amount of gas used in the
     /// block up until and including the transaction.
-    pub cumulative_gas_per_block: eU256,
+    pub cumulative_gas_per_block: BigUint,
 }
 
 /// Cheatcodes are a direct way to access the underlying [`EVM`] environment and
@@ -218,7 +226,7 @@ pub enum Cheatcodes {
     /// A `Deal` is used to increase the balance of an account in the [`EVM`].
     Deal {
         /// The address of the account to increase the balance of.
-        address: eAddress,
+        address: ContractAddress,
 
         /// The amount to increase the balance of the account by.
         amount: BigUint,
@@ -228,7 +236,7 @@ pub enum Cheatcodes {
         /// The address of the account to fetch the storage slot from.
         account: ContractAddress,
         /// The storage slot to fetch.
-        key: PatriciaKey,
+        key: StorageKey,
         /// The block to fetch the storage slot from.
         /// todo: implement storage slots at blocks.
         block: BlockId,
@@ -240,14 +248,14 @@ pub enum Cheatcodes {
         /// The address of the account to overwrite the storage slot of.
         account: ContractAddress,
         /// The storage slot to overwrite.
-        key: PatriciaKey,
+        key: StorageKey,
         /// The value to overwrite the storage slot with.
         value: Felt,
     },
     /// Fetches the `DbAccount` account at the given address.
     Access {
         /// The address of the account to fetch.
-        address: eAddress,
+        address: Felt,
     },
 }
 

@@ -98,6 +98,10 @@ pub enum ArbiterCoreError {
     /// Failed to grab a lock.
     #[error("{0}")]
     RwLockError(String),
+
+    // TODO: remove and make more specific errors.
+    #[error("{0}")]
+    InternalError(String),
 }
 
 impl From<SendError<Result<Outcome, ArbiterCoreError>>> for ArbiterCoreError {

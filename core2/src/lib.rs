@@ -46,10 +46,6 @@ use std::{
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use starknet::core::types::{
-    ByteArray as eBytes, EventFilter, ExecutionResult, Felt as eAddress, Hash256 as H256,
-    U256 as eU256,
-};
 use tokio::sync::broadcast::{Receiver as BroadcastReceiver, Sender as BroadcastSender};
 use tracing::{debug, error, info, trace, warn};
 

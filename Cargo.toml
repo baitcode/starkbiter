@@ -1,7 +1,7 @@
 [workspace]
 # List of crates included in this workspace
-# members = ["bindings", "core", "engine", "macros", "docs", "core2"]
-members = ["core2"]
+# members = [, "core", "engine", "macros", "docs", "core2"]
+members = ["core", "bindings"]
 
 # List of crates excluded from this workspace
 exclude = ["benches", "docs"]
@@ -20,20 +20,18 @@ license = "Apache-2.0"
 keywords = ["ethereum", "evm", "emulator", "testing", "smart-contracts"]
 
 # Binary configuration
-# [[bin]]
-# name = "arbiter"
-# path = "bin/main.rs"
+[[bin]]
+name = "arbiter"
+path = "bin/main.rs"
 
 [[example]]
 name = "minter"
 path = "examples/minter/main.rs"
 
-
 [workspace.dependencies]
 # Arbiter local for development
-# arbiter-bindings = { path = "bindings" }
-# arbiter-core = { path = "core" }
-arbiter-core2 = { path = "core2" }
+arbiter-bindings = { path = "bindings" }
+arbiter-core = { path = "core" }
 # arbiter-engine = { path = "engine" }
 # arbiter-macros = { path = "macros" }
 
@@ -46,9 +44,9 @@ arbiter-core2 = { path = "core2" }
 serde = { version = "1.0.200", features = ["derive"] }
 serde_json = { version = "1.0.116" }
 toml = "0.8.12"
+
 ethers = "=2.0.11"
 ethers-providers = "=2.0.11"
-
 
 tokio = { version = "1.36.0", features = ["macros", "full"] }
 futures = "0.3.30"
@@ -66,7 +64,7 @@ anyhow = "1.0.83"
 
 # Dependencies for the release build of Arbiter bin
 [dependencies]
-arbiter-core2.workspace = true
+arbiter-core.workspace = true
 
 # Command line and config
 clap = { version = "4.5.2", features = ["derive"] }
@@ -86,7 +84,9 @@ tempfile = { version = "3.10.1" }
 thiserror.workspace = true
 # Dependencies for the test build and development
 [dev-dependencies]
-# arbiter-bindings.workspace = true
+arbiter-bindings.workspace = true
+arbiter-core.workspace = true
+
 # arbiter-engine.workspace = true
 # arbiter-macros.workspace = true
 serde.workspace = true

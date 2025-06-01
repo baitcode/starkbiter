@@ -20,13 +20,6 @@
 
 use std::{io::BufWriter, marker::PhantomData, mem::transmute, pin::Pin};
 
-use ethers::{
-    abi::RawLog,
-    contract::{builders::Event, EthLogDecode},
-    core::k256::sha2::{Digest, Sha256},
-    providers::Middleware,
-    types::{Filter, FilteredParams},
-};
 use futures_util::Stream;
 use polars::{
     io::parquet::ParquetWriter,
@@ -38,10 +31,11 @@ use serde_json::Value;
 use tokio::{sync::broadcast::Receiver as BroadcastReceiver, task::JoinHandle};
 
 use super::*;
-use crate::middleware::{connection::revm_logs_to_ethers_logs, ArbiterMiddleware};
+use crate::{environment::Broadcast, middleware::ArbiterMiddleware};
 
 pub(crate) type FilterDecoder =
     BTreeMap<String, (FilteredParams, Box<dyn Fn(&RawLog) -> String + Send + Sync>)>;
+
 /// `EventLogger` is a struct that logs events from the Ethereum network.
 ///
 /// It contains a BTreeMap of events, where each event is represented by a

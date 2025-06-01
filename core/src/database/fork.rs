@@ -30,7 +30,8 @@ pub struct ContractMetadata {
 #[derive(Clone, Debug)]
 pub struct Fork {
     /// The [`CacheDB`] that will be loaded into the [`Environment`].
-    pub db: CacheDB<EmptyDB>,
+
+    // pub db: CacheDB<EmptyDB>,
 
     /// The [`HashMap`] of [`ContractMetadata`] that will be used by the
     /// end-user.

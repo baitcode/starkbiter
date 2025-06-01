@@ -19,32 +19,45 @@
 use std::thread::{self, JoinHandle};
 
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
-use ethers::{abi::AbiDecode, types::ValueOrArray};
-use revm::{
-    db::AccountState,
-    inspector_handle_register,
-    primitives::{Env, HashMap, B256},
+
+use polars::prelude::ArrayCollectIterExt;
+use starknet::contract;
+use starknet_core::types::{self as core_types};
+use starknet_devnet_core::constants::{
+    self, ETH_ERC20_CONTRACT_ADDRESS, STRK_ERC20_CONTRACT_ADDRESS,
 };
+
+use starknet_devnet_core::error::Error as DevnetError;
+use starknet_devnet_core::{
+    starknet::{starknet_config::StarknetConfig, Starknet},
+    state::{StarknetState, StateReader},
+};
+use starknet_devnet_types::error::Error;
+use starknet_devnet_types::rpc::transactions::broadcasted_invoke_transaction_v3::BroadcastedInvokeTransactionV3;
+use starknet_devnet_types::rpc::transactions::{
+    BroadcastedDeclareTransaction, BroadcastedDeployAccountTransaction,
+    BroadcastedInvokeTransaction, BroadcastedTransaction, SimulationFlag, TransactionTrace,
+};
+use starknet_devnet_types::{contract_address::ContractAddress, num_bigint::BigUint};
+
+use starknet_devnet_types::rpc::block::{self, BlockResult};
+
+use starknet_devnet_types::starknet_api::state::StorageKey;
+use starknet_devnet_types::starknet_api::{core as api_core, transaction_hash};
 use tokio::sync::broadcast::channel;
 
 use super::*;
-#[cfg_attr(doc, doc(hidden))]
-#[cfg_attr(doc, allow(unused_imports))]
-#[cfg(doc)]
-use crate::middleware::ArbiterMiddleware;
-use crate::{
-    console::abi::HardhatConsoleCalls, database::inspector::ArbiterInspector,
-    middleware::connection::revm_logs_to_ethers_logs,
-};
 
 pub mod instruction;
-use instruction::*;
+use instruction::{Instruction, NodeInstruction, NodeOutcome, Outcome, ReceiptData};
+
+mod utils;
 
 /// Alias for the sender of the channel for transmitting transactions.
-pub(crate) type InstructionSender = Sender<Instruction>;
+pub(crate) type InstructionSender = Sender<(Instruction, OutcomeSender)>;
 
 /// Alias for the receiver of the channel for transmitting transactions.
-pub(crate) type InstructionReceiver = Receiver<Instruction>;
+pub(crate) type InstructionReceiver = Receiver<(Instruction, OutcomeSender)>;
 
 /// Alias for the sender of the channel for transmitting [`RevmResult`] emitted
 /// from transactions.
@@ -74,9 +87,8 @@ pub struct Environment {
 
     /// The [`EVM`] that is used as an execution environment and database for
     /// calls and transactions.
-    pub(crate) db: ArbiterDB,
-
-    inspector: Option<ArbiterInspector>,
+    // pub(crate) db: ArbiterDB,
+    // inspector: Option<ArbiterInspector>,
 
     /// This gives a means of letting the "outside world" connect to the
     /// [`Environment`] so that users (or agents) may send and receive data from
@@ -96,7 +108,7 @@ pub struct EnvironmentParameters {
     pub label: Option<String>,
 
     /// The gas limit for the blocks in the [`Environment`].
-    pub gas_limit: Option<U256>,
+    pub gas_limit: Option<BigUint>,
 
     /// The contract size limit for the [`Environment`].
     pub contract_size_limit: Option<usize>,
@@ -116,14 +128,18 @@ pub struct EnvironmentParameters {
 /// size limit, and a database for the [`Environment`].
 pub struct EnvironmentBuilder {
     parameters: EnvironmentParameters,
-    db: ArbiterDB,
+    // db: ArbiterDB,
 }
 
 impl EnvironmentBuilder {
     /// Builds and runs an [`Environment`] with the parameters set in the
     /// [`EnvironmentBuilder`].
     pub fn build(self) -> Environment {
-        Environment::create(self.parameters, self.db).run()
+        Environment::create(
+            self.parameters,
+            // self.db,
+        )
+        .run()
     }
 
     /// Sets the label for the [`Environment`].
@@ -133,7 +149,7 @@ impl EnvironmentBuilder {
     }
 
     /// Sets the gas limit for the [`Environment`].
-    pub fn with_gas_limit(mut self, gas_limit: U256) -> Self {
+    pub fn with_gas_limit(mut self, gas_limit: BigUint) -> Self {
         self.parameters.gas_limit = Some(gas_limit);
         self
     }
@@ -146,26 +162,29 @@ impl EnvironmentBuilder {
 
     /// Sets the state for the [`Environment`]. This can come from a saved state
     /// of a simulation or a [`database::fork::Fork`].
-    pub fn with_state(mut self, state: impl Into<CacheDB<EmptyDB>>) -> Self {
-        self.db.state = Arc::new(RwLock::new(state.into()));
-        self
-    }
+    // pub fn with_state(mut self, state: impl Into<CacheDB<EmptyDB>>) -> Self {
+    //     self.db.state = Arc::new(RwLock::new(state.into()));
+    //     self
+    // }
 
     /// Sets the logs for the [`Environment`]. This can come from a saved state
     /// of a simulation and can be useful for doing analysis.
-    pub fn with_logs(
-        mut self,
-        logs: impl Into<std::collections::HashMap<U256, Vec<eLog>>>,
-    ) -> Self {
-        self.db.logs = Arc::new(RwLock::new(logs.into()));
-        self
-    }
+    // pub fn with_logs(
+    //     mut self,
+    //     logs: impl Into<std::collections::HashMap<U256, Vec<eLog>>>,
+    // ) -> Self {
+    //     self.db.logs = Arc::new(RwLock::new(logs.into()));
+    //     self
+    // }
 
     /// Sets the entire database for the [`Environment`] including both the
     /// state and logs. This can come from the saved state of a simulation and
     /// can be useful for doing analysis.
-    pub fn with_arbiter_db(mut self, db: ArbiterDB) -> Self {
-        self.db = db;
+    pub fn with_arbiter_db(
+        mut self,
+        // db: ArbiterDB
+    ) -> Self {
+        // self.db = db;
         self
     }
 
@@ -190,11 +209,12 @@ impl Environment {
     pub fn builder() -> EnvironmentBuilder {
         EnvironmentBuilder {
             parameters: EnvironmentParameters::default(),
-            db: ArbiterDB::default(),
+            // db: ArbiterDB::default(),
         }
     }
 
-    fn create(parameters: EnvironmentParameters, db: ArbiterDB) -> Self {
+    fn create(parameters: EnvironmentParameters, // , db: ArbiterDB
+    ) -> Self {
         let (instruction_sender, instruction_receiver) = unbounded();
         let (event_broadcaster, _) = channel(512);
         let socket = Socket {
@@ -203,20 +223,20 @@ impl Environment {
             event_broadcaster,
         };
 
-        let inspector = if parameters.console_logs || parameters.pay_gas {
-            Some(ArbiterInspector::new(
-                parameters.console_logs,
-                parameters.pay_gas,
-            ))
-        } else {
-            Some(ArbiterInspector::new(false, false))
-        };
+        // let inspector = if parameters.console_logs || parameters.pay_gas {
+        //     Some(ArbiterInspector::new(
+        //         parameters.console_logs,
+        //         parameters.pay_gas,
+        //     ))
+        // } else {
+        //     Some(ArbiterInspector::new(false, false))
+        // };
 
         Self {
             socket,
-            inspector,
+            // inspector,
             parameters,
-            db,
+            // db,
             handle: None,
         }
     }
@@ -229,14 +249,10 @@ impl Environment {
 
         // Bring in the EVM db and log storage by cloning the interior Arc
         // (lightweight).
-        let db = self.db.clone();
+        // let db = self.db.clone();
 
-        // Bring in the EVM ENV
-        let mut env = Env::default();
-        env.cfg.limit_contract_code_size = self.parameters.contract_size_limit;
-        env.block.gas_limit = self.parameters.gas_limit.unwrap_or(U256::MAX);
         // Bring in the inspector
-        let inspector = self.inspector.take().unwrap();
+        // let inspector = self.inspector.take().unwrap();
 
         // Pull communication clones to move into a new thread.
         let instruction_receiver = self.socket.instruction_receiver.clone();
@@ -244,421 +260,503 @@ impl Environment {
 
         // Move the EVM and its socket to a new thread and retrieve this handle
         let handle = thread::spawn(move || {
-            // Create a new EVM builder
-            let mut evm = Evm::builder()
-                .with_db(db.clone())
-                .with_env(Box::new(env))
-                .with_external_context(inspector)
-                .append_handler_register(inspector_handle_register)
-                .build();
+            // TODO: support forking
+            // TODO: Simulated block production
+
+            // let mut env = Env::default();
+            // env.cfg.limit_contract_code_size = self.parameters.contract_size_limit;
+            // env.block.gas_limit = self.parameters.gas_limit.unwrap_or(eU256::MAX);
+
+            let mut starknet_config = &StarknetConfig::default();
+            // Fork configuration
+
+            let mut starknet = Starknet::new(starknet_config).unwrap();
 
             // Initialize counters that are returned on some receipts.
-            let mut transaction_index = U64::from(0_u64);
-            let mut cumulative_gas_per_block = eU256::from(0);
+            // let mut transaction_index = 0_u64;
+            // let mut last_executed_gas_price: u128 = 0;
+            // let mut cumulative_gas_per_block = BigUint::from(0_u128);
 
             // Loop over the instructions sent through the socket.
-            while let Ok(instruction) = instruction_receiver.recv() {
+            while let Ok((instruction, sender)) = instruction_receiver.recv() {
                 trace!(
                     "Instruction {:?} received by environment labeled: {:?}",
                     instruction,
                     label
                 );
-                match instruction {
-                    Instruction::AddAccount {
-                        address,
-                        outcome_sender,
-                    } => {
-                        let recast_address = Address::from(address.as_fixed_bytes());
-                        let account = revm::db::DbAccount {
-                            info: AccountInfo::default(),
-                            account_state: AccountState::None,
-                            storage: HashMap::new(),
-                        };
-                        match db.state.write()?.accounts.insert(recast_address, account) {
-                            None => outcome_sender.send(Ok(Outcome::AddAccountCompleted))?,
-                            Some(_) => {
-                                outcome_sender.send(Err(ArbiterCoreError::AccountCreationError))?;
-                            }
+
+                let result: Result<Outcome, ArbiterCoreError> = match instruction {
+                    Instruction::Node(ref basic_instruction) => match basic_instruction {
+                        NodeInstruction::GetSpecVersion => {
+                            let outcome =
+                                Outcome::Node(NodeOutcome::SpecVersion("unknown".to_string()));
+                            Ok(outcome)
                         }
-                    }
-                    Instruction::BlockUpdate {
-                        block_number,
-                        block_timestamp,
-                        outcome_sender,
-                    } => {
-                        // Return the old block data in a `ReceiptData`
-                        let old_block_number = evm.block().number;
-                        let receipt_data = ReceiptData {
-                            block_number: convert_uint_to_u64(old_block_number)?,
-                            transaction_index,
-                            cumulative_gas_per_block,
-                        };
 
-                        // Update the block number and timestamp
-                        evm.block_mut().number = U256::from_limbs(block_number.0);
-                        evm.block_mut().timestamp = U256::from_limbs(block_timestamp.0);
+                        NodeInstruction::GetBlockWithTxHashes { block_id } => {
+                            let block_result = starknet
+                                .get_block_with_transactions(block_id)
+                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
 
-                        // Reset the counters.
-                        transaction_index = U64::from(0);
-                        cumulative_gas_per_block = eU256::from(0);
+                            let outcome: core_types::MaybePendingBlockWithTxHashes =
+                                match block_result {
+                                    BlockResult::PendingBlock(block) => {
+                                        core_types::MaybePendingBlockWithTxHashes::PendingBlock(
+                                            core_types::PendingBlockWithTxHashes::from(block),
+                                        )
+                                    }
+                                    BlockResult::Block(block) => {
+                                        core_types::MaybePendingBlockWithTxHashes::Block(
+                                            core_types::BlockWithTxHashes::from(block),
+                                        )
+                                    }
+                                };
 
-                        // Return the old block data in a `ReceiptData` after the block update.
-                        outcome_sender.send(Ok(Outcome::BlockUpdateCompleted(receipt_data)))?;
-                    }
-                    Instruction::Cheatcode {
-                        cheatcode,
-                        outcome_sender,
-                    } => match cheatcode {
-                        Cheatcodes::Load {
-                            account,
+                            Ok(Outcome::Node(NodeOutcome::GetBlockWithTxHashes(outcome)))
+                        }
+
+                        NodeInstruction::GetBlockWithTxs { block_id } => {
+                            let block_result = starknet
+                                .get_block_with_transactions(&block_id)
+                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                            let outcome: core_types::MaybePendingBlockWithTxs = match block_result {
+                                BlockResult::PendingBlock(block) => {
+                                    core_types::MaybePendingBlockWithTxs::PendingBlock(
+                                        core_types::PendingBlockWithTxs::from(block),
+                                    )
+                                }
+                                BlockResult::Block(block) => {
+                                    core_types::MaybePendingBlockWithTxs::Block(
+                                        core_types::BlockWithTxs::from(block),
+                                    )
+                                }
+                            };
+
+                            Ok(Outcome::Node(NodeOutcome::GetBlockWithTxs(outcome)))
+                        }
+
+                        NodeInstruction::GetBlockWithReceipts { block_id } => {
+                            let block_result = starknet
+                                .get_block_with_receipts(&block_id)
+                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                            let outcome: core_types::MaybePendingBlockWithReceipts =
+                                match block_result {
+                                    BlockResult::PendingBlock(block) => {
+                                        core_types::MaybePendingBlockWithReceipts::PendingBlock(
+                                            core_types::PendingBlockWithReceipts::from(block),
+                                        )
+                                    }
+                                    BlockResult::Block(block) => {
+                                        core_types::MaybePendingBlockWithReceipts::Block(
+                                            core_types::BlockWithReceipts::from(block),
+                                        )
+                                    }
+                                };
+
+                            Ok(Outcome::Node(NodeOutcome::GetBlockWithReceipts(outcome)))
+                        }
+
+                        NodeInstruction::GetStateUpdate { block_id } => {
+                            let res = starknet
+                                .block_state_update(block_id)
+                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                            Ok(Outcome::Node(NodeOutcome::GetStateUpdate(res.into())))
+                        }
+
+                        NodeInstruction::GetStorageAt {
+                            contract_address,
                             key,
-                            block: _,
+                            // TODO: hmmmm, something is off
+                            block_id,
                         } => {
-                            let recast_address = Address::from(account.as_fixed_bytes());
-                            let recast_key = B256::from(key.as_fixed_bytes()).into();
+                            let state = starknet.get_state();
 
-                            // Get the account storage value at the key in the db.
-                            match db.state.write()?.accounts.get_mut(&recast_address) {
-                                Some(account) => {
-                                    // Returns zero if the account is missing.
-                                    let value: U256 = match account.storage.get::<U256>(&recast_key)
-                                    {
-                                        Some(value) => *value,
-                                        None => U256::ZERO,
-                                    };
-                                    outcome_sender.send(Ok(Outcome::CheatcodeReturn(
-                                        CheatcodesReturn::Load { value },
-                                    )))?;
-                                }
-                                None => {
-                                    outcome_sender
-                                        .send(Err(ArbiterCoreError::AccountDoesNotExistError))?;
-                                }
-                            };
+                            let contract_address = api_core::ContractAddress::try_from(
+                                *contract_address,
+                            )
+                            .map_err(|e| {
+                                ArbiterCoreError::DevnetError(DevnetError::StarknetApiError(e))
+                            })?;
+
+                            let storage_key = StorageKey::try_from(*key).map_err(|e| {
+                                ArbiterCoreError::DevnetError(DevnetError::StarknetApiError(e))
+                            })?;
+
+                            let outcome = state
+                                .get_storage_at(contract_address, storage_key)
+                                .map_err(|e| {
+                                    ArbiterCoreError::DevnetError(
+                                        DevnetError::BlockifierStateError(e),
+                                    )
+                                })?;
+
+                            Ok(Outcome::Node(NodeOutcome::GetStorageAt(outcome)))
                         }
-                        Cheatcodes::Store {
-                            account,
-                            key,
-                            value,
+
+                        NodeInstruction::GetMessagesStatus { transaction_hash } => {
+                            let outcome = starknet
+                                .get_messages_status(*transaction_hash)
+                                .unwrap_or(Vec::new());
+                            Ok(Outcome::Node(NodeOutcome::GetMessagesStatus(
+                                outcome.iter().map(Into::into).collect(),
+                            )))
+                        }
+
+                        NodeInstruction::GetTransactionStatus { transaction_hash } => {
+                            let transaction_hash = core_types::Felt::try_from(transaction_hash)
+                                .map_err(|e| ArbiterCoreError::InternalError(e.to_string()))?;
+
+                            let outcome = starknet
+                                .get_transaction_execution_and_finality_status(transaction_hash)
+                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                            Ok(Outcome::Node(NodeOutcome::GetTransactionStatus(
+                                outcome.into(),
+                            )))
+                        }
+
+                        NodeInstruction::GetTransactionByHash { transaction_hash } => {
+                            let transaction_hash = core_types::Felt::try_from(transaction_hash)
+                                .map_err(|e| ArbiterCoreError::InternalError(e.to_string()))?;
+
+                            let transaction = starknet
+                                .get_transaction_by_hash(transaction_hash)
+                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                            Ok(Outcome::Node(NodeOutcome::GetTransactionByHash(
+                                core_types::Transaction::from(transaction.clone()),
+                            )))
+                        }
+                        NodeInstruction::GetTransactionByBlockIdAndIndex { block_id, index } => {
+                            let transaction = starknet
+                                .get_transaction_by_block_id_and_index(&block_id, *index)
+                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                            Ok(Outcome::Node(NodeOutcome::GetTransactionByBlockIdAndIndex(
+                                core_types::Transaction::from(transaction.clone()),
+                            )))
+                        }
+                        NodeInstruction::GetTransactionReceipt { transaction_hash } => {
+                            let transaction_hash = core_types::Felt::try_from(transaction_hash)
+                                .map_err(|e| ArbiterCoreError::InternalError(e.to_string()))?;
+
+                            let receipt = starknet
+                                .get_transaction_receipt_by_hash(&transaction_hash)
+                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                            Ok(Outcome::Node(NodeOutcome::GetTransactionReceipt(
+                                core_types::TransactionReceiptWithBlockInfo::from(receipt),
+                            )))
+                        }
+                        NodeInstruction::GetClass {
+                            block_id,
+                            class_hash,
                         } => {
-                            let recast_address = Address::from(account.as_fixed_bytes());
-                            let recast_key = B256::from(key.as_fixed_bytes());
-                            let recast_value = B256::from(value.as_fixed_bytes());
+                            let klass = starknet
+                                .get_class(&block_id, *class_hash)
+                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
 
-                            // Mutate the db by inserting the new key-value pair into the account's
-                            // storage and send the successful CheatcodeCompleted outcome.
-                            match db.state.write()?.accounts.get_mut(&recast_address) {
-                                Some(account) => {
-                                    account
-                                        .storage
-                                        .insert(recast_key.into(), recast_value.into());
-
-                                    outcome_sender.send(Ok(Outcome::CheatcodeReturn(
-                                        CheatcodesReturn::Store,
-                                    )))?;
-                                }
-                                None => {
-                                    outcome_sender
-                                        .send(Err(ArbiterCoreError::AccountDoesNotExistError))?;
-                                }
-                            };
+                            Ok(Outcome::Node(NodeOutcome::GetClass(
+                                klass.try_into().map_err(|e: Error| {
+                                    ArbiterCoreError::InternalError(e.to_string())
+                                })?,
+                            )))
                         }
-                        Cheatcodes::Deal { address, amount } => {
-                            let recast_address = Address::from(address.as_fixed_bytes());
-                            match db.state.write()?.accounts.get_mut(&recast_address) {
-                                Some(account) => {
-                                    account.info.balance += U256::from_limbs(amount.0);
-                                    outcome_sender.send(Ok(Outcome::CheatcodeReturn(
-                                        CheatcodesReturn::Deal,
-                                    )))?;
-                                }
-                                None => {
-                                    outcome_sender
-                                        .send(Err(ArbiterCoreError::AccountDoesNotExistError))?;
-                                }
-                            };
+                        NodeInstruction::GetClassHashAt {
+                            block_id,
+                            contract_address,
+                        } => {
+                            let contract_address = ContractAddress::new(*contract_address)
+                                .expect("Should always work");
+
+                            let class_hash = starknet
+                                .get_class_hash_at(&block_id, contract_address)
+                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                            Ok(Outcome::Node(NodeOutcome::GetClassHashAt(class_hash)))
                         }
-                        Cheatcodes::Access { address } => {
-                            let recast_address = Address::from(address.as_fixed_bytes());
-                            match db.state.write()?.accounts.get(&recast_address) {
-                                Some(account) => {
-                                    let account_state = match account.account_state {
-                                        AccountState::None => AccountStateSerializable::None,
-                                        AccountState::Touched => AccountStateSerializable::Touched,
-                                        AccountState::StorageCleared => {
-                                            AccountStateSerializable::StorageCleared
-                                        }
-                                        AccountState::NotExisting => {
-                                            AccountStateSerializable::NotExisting
-                                        }
-                                    };
+                        NodeInstruction::GetClassAt {
+                            block_id,
+                            contract_address,
+                        } => {
+                            let contract_address = ContractAddress::new(*contract_address)
+                                .expect("Should always work");
 
-                                    let account = CheatcodesReturn::Access {
-                                        account_state,
-                                        info: account.info.clone(),
-                                        storage: account.storage.clone(),
-                                    };
+                            let contract_class = starknet
+                                .get_class_at(&block_id, contract_address)
+                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
 
-                                    outcome_sender.send(Ok(Outcome::CheatcodeReturn(account)))?;
-                                }
-                                None => {
-                                    outcome_sender
-                                        .send(Err(ArbiterCoreError::AccountDoesNotExistError))?;
-                                }
-                            }
+                            Ok(Outcome::Node(NodeOutcome::GetClassAt(
+                                contract_class.try_into().map_err(|e: Error| {
+                                    ArbiterCoreError::InternalError(e.to_string())
+                                })?,
+                            )))
+                        }
+                        NodeInstruction::GetBlockTransactionCount { block_id } => {
+                            let count = starknet
+                                .get_block_txs_count(&block_id)
+                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                            Ok(Outcome::Node(NodeOutcome::GetBlockTransactionCount(count)))
+                        }
+                        NodeInstruction::BlockNumber => {
+                            let block = starknet
+                                .get_latest_block()
+                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                            Ok(Outcome::Node(NodeOutcome::BlockNumber(
+                                block.block_number().0,
+                            )))
+                        }
+                        NodeInstruction::BlockHashAndNumber => {
+                            let block = starknet
+                                .get_latest_block()
+                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                            Ok(Outcome::Node(NodeOutcome::BlockHashAndNumber(
+                                core_types::BlockHashAndNumber {
+                                    block_hash: block.block_hash(),
+                                    block_number: block.block_number().0,
+                                },
+                            )))
+                        }
+                        NodeInstruction::ChainId => {
+                            let chain_id = starknet.config.chain_id;
+                            Ok(Outcome::Node(NodeOutcome::ChainId(chain_id.into())))
+                        }
+                        NodeInstruction::Syncing => Ok(Outcome::Node(NodeOutcome::Syncing(
+                            core_types::SyncStatusType::NotSyncing,
+                        ))),
+                        NodeInstruction::GetEvents {
+                            filter,
+                            continuation_token,
+                            chunk_size,
+                        } => {
+                            let skip = if let Some(s) = continuation_token {
+                                s.parse::<u64>()
+                                    .expect("Continuation token should be a valid u64")
+                            } else {
+                                0
+                            };
+
+                            let chunk_size: usize = if let Some(size) = chunk_size {
+                                *size as usize
+                            } else {
+                                50_usize // TODO: Default chunk size. Move to config
+                            };
+
+                            let (events, has_filtered_events) = starknet
+                                .get_events(
+                                    filter.from_block,
+                                    filter.to_block,
+                                    match filter.address {
+                                        Some(address) => Some(
+                                            ContractAddress::new(address)
+                                                .expect("Should always work"),
+                                        ),
+                                        None => None,
+                                    },
+                                    filter.keys.clone(),
+                                    skip.try_into().expect("Skip should be a valid usize"),
+                                    Some(chunk_size),
+                                )
+                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                            let continuation_token = if events.len() < chunk_size {
+                                Option::None
+                            } else {
+                                Option::Some(format!("{}", skip + events.len() as u64))
+                            };
+
+                            let page = core_types::EventsPage {
+                                events: events.iter().map(|e| e.into()).collect(),
+                                continuation_token,
+                            };
+
+                            Ok(Outcome::Node(NodeOutcome::GetEvents(page)))
+                        }
+                        NodeInstruction::Call { request, block_id } => {
+                            let res = starknet
+                                .call(
+                                    block_id,
+                                    request.contract_address,
+                                    request.entry_point_selector,
+                                    request.calldata.clone(),
+                                )
+                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                            Ok(Outcome::Node(NodeOutcome::Call(res)))
+                        }
+
+                        NodeInstruction::AddInvokeTransaction { transaction } => {
+                            let tx_hash = starknet
+                                .add_invoke_transaction(BroadcastedInvokeTransaction::V3(
+                                    transaction.clone().into(),
+                                ))
+                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                            Ok(Outcome::Node(NodeOutcome::AddInvokeTransaction(
+                                core_types::InvokeTransactionResult {
+                                    transaction_hash: tx_hash,
+                                },
+                            )))
+                        }
+                        NodeInstruction::AddDeclareTransaction { transaction } => {
+                            let (tx_hash, class_hash) = starknet
+                                .add_declare_transaction(BroadcastedDeclareTransaction::V3(
+                                    Box::new(transaction.clone().into()),
+                                ))
+                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                            Ok(Outcome::Node(NodeOutcome::AddDeclareTransaction(
+                                core_types::DeclareTransactionResult {
+                                    transaction_hash: tx_hash,
+                                    class_hash,
+                                },
+                            )))
+                        }
+                        NodeInstruction::AddDeployAccountTransaction { transaction } => {
+                            let (tx_hash, contract_address) = starknet
+                                .add_deploy_account_transaction(
+                                    BroadcastedDeployAccountTransaction::V3(
+                                        transaction.clone().into(),
+                                    ),
+                                )
+                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                            Ok(Outcome::Node(NodeOutcome::AddDeployAccountTransaction(
+                                core_types::DeployAccountTransactionResult {
+                                    transaction_hash: tx_hash,
+                                    contract_address: core_types::Felt::from(contract_address),
+                                },
+                            )))
+                        }
+                        NodeInstruction::TraceTransaction { transaction_hash } => {
+                            let trace = starknet
+                                .get_transaction_trace_by_hash(*transaction_hash)
+                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                            Ok(Outcome::Node(NodeOutcome::TraceTransaction(trace.into())))
+                        }
+                        NodeInstruction::SimulateTransactions {
+                            block_id,
+                            transactions,
+                            simulation_flags,
+                        } => {
+                            let res = starknet
+                                .simulate_transactions(
+                                    &block_id,
+                                    transactions
+                                        .iter()
+                                        .cloned()
+                                        .map(Into::into)
+                                        .collect::<Vec<BroadcastedTransaction>>()
+                                        .as_slice(),
+                                    simulation_flags.iter().cloned().map(Into::into).collect(),
+                                )
+                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+                            Ok(Outcome::Node(NodeOutcome::SimulateTransactions(
+                                res.iter().cloned().map(Into::into).collect(),
+                            )))
+                        }
+                        NodeInstruction::TraceBlockTransactions { block_id } => {
+                            let res = starknet
+                                .get_transaction_traces_from_block(&block_id)
+                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                            Ok(Outcome::Node(NodeOutcome::TraceBlockTransactions(
+                                res.iter().cloned().map(Into::into).collect(),
+                            )))
+                        }
+                        NodeInstruction::EstimateFee {
+                            request,
+                            simulate_flags,
+                            block_id,
+                        } => {
+                            let txs = &[BroadcastedTransaction::from(request.clone())];
+
+                            // NOTE: good example of From trait superiority
+                            let simulation_flags = &[SimulationFlag::from(*simulate_flags)];
+
+                            let fees = starknet
+                                .estimate_fee(&block_id, txs, simulation_flags)
+                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                            Ok(Outcome::Node(NodeOutcome::EstimateFee(
+                                fees.iter().cloned().map(Into::into).collect(),
+                            )))
+                        }
+                        NodeInstruction::EstimateMessageFee { message, block_id } => {
+                            let fee = starknet
+                                .estimate_message_fee(&block_id, message.clone())
+                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                            Ok(Outcome::Node(NodeOutcome::EstimateMessageFee(fee.into())))
+                        }
+                        NodeInstruction::GetNonce {
+                            block_id,
+                            contract_address,
+                        } => {
+                            let contract_address = ContractAddress::new(*contract_address)
+                                .expect("Should always work.");
+
+                            let nonce = starknet
+                                .contract_nonce_at_block(&block_id, contract_address)
+                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                            Ok(Outcome::Node(NodeOutcome::GetNonce(nonce.into())))
                         }
                     },
-                    // A `Call` is not state changing and will not create events but will create
-                    // console logs.
-                    Instruction::Call {
-                        tx_env,
-                        outcome_sender,
-                    } => {
-                        // Set the tx_env and prepare to process it
-                        *evm.tx_mut() = tx_env;
+                    Instruction::Cheat => todo!(),
+                    Instruction::System => todo!(),
+                };
 
-                        let result = evm.transact()?.result;
-
-                        if let Some(console_log) = &mut evm.context.external.console_log {
-                            console_log.0.drain(..).for_each(|log| {
-                                // This unwrap is safe because the logs are guaranteed to be
-                                // `HardhatConsoleCalls` by the `ArbiterInspector`.
-                                trace!(
-                                    "Console logs: {:?}",
-                                    HardhatConsoleCalls::decode(log).unwrap().to_string()
-                                )
-                            });
-                        };
-
-                        outcome_sender.send(Ok(Outcome::CallCompleted(result)))?;
-                    }
-                    Instruction::SetGasPrice {
-                        gas_price,
-                        outcome_sender,
-                    } => {
-                        evm.tx_mut().gas_price = U256::from_limbs(gas_price.0);
-                        outcome_sender.send(Ok(Outcome::SetGasPriceCompleted))?;
-                    }
-
-                    // A `Transaction` is state changing and will create events.
-                    Instruction::Transaction {
-                        tx_env,
-                        outcome_sender,
-                    } => {
-                        // Set the tx_env and prepare to process it
-                        *evm.tx_mut() = tx_env;
-
-                        let execution_result = match evm.transact_commit() {
-                            Ok(result) => {
-                                if let Some(console_log) = &mut evm.context.external.console_log {
-                                    console_log.0.drain(..).for_each(|log| {
-                                        // This unwrap is safe because the logs are guaranteed to be
-                                        // `HardhatConsoleCalls` by the `ArbiterInspector`.
-                                        trace!(
-                                            "Console logs: {:?}",
-                                            HardhatConsoleCalls::decode(log).unwrap().to_string()
-                                        )
-                                    });
-                                };
-                                result
-                            }
-                            Err(e) => {
-                                outcome_sender.send(Err(ArbiterCoreError::EVMError(e)))?;
-                                continue;
-                            }
-                        };
-                        cumulative_gas_per_block += eU256::from(execution_result.gas_used());
-                        let block_number = convert_uint_to_u64(evm.block().number)?;
-                        let receipt_data = ReceiptData {
-                            block_number,
-                            transaction_index,
-                            cumulative_gas_per_block,
-                        };
-
-                        let mut logs = db.logs.write()?;
-                        match logs.get_mut(&evm.block().number) {
-                            Some(log_vec) => {
-                                log_vec.extend(revm_logs_to_ethers_logs(
-                                    execution_result.logs().to_vec(),
-                                    &receipt_data,
-                                ));
-                            }
-                            None => {
-                                logs.insert(
-                                    evm.block().number,
-                                    revm_logs_to_ethers_logs(
-                                        execution_result.logs().to_vec(),
-                                        &receipt_data,
-                                    ),
-                                );
-                            }
-                        }
-
-                        match event_broadcaster.send(Broadcast::Event(
-                            execution_result.logs().to_vec(),
-                            receipt_data.clone(),
-                        )) {
-                            Ok(_) => {}
-                            Err(_) => {
-                                warn!(
-                                    "Event was not sent to any listeners. Are there any listeners?"
-                                )
-                            }
-                        }
-                        outcome_sender.send(Ok(Outcome::TransactionCompleted(
-                            execution_result,
-                            receipt_data,
-                        )))?;
-
-                        transaction_index += U64::from(1);
-                    }
-                    Instruction::Query {
-                        environment_data,
-                        outcome_sender,
-                    } => {
-                        let outcome = match environment_data {
-                            EnvironmentData::BlockNumber => {
-                                Ok(Outcome::QueryReturn(evm.block().number.to_string()))
-                            }
-                            EnvironmentData::BlockTimestamp => {
-                                Ok(Outcome::QueryReturn(evm.block().timestamp.to_string()))
-                            }
-                            EnvironmentData::GasPrice => {
-                                Ok(Outcome::QueryReturn(evm.tx().gas_price.to_string()))
-                            }
-                            EnvironmentData::Balance(address) => {
-                                match db
-                                    .state
-                                    .read()
-                                    .unwrap()
-                                    .accounts
-                                    .get::<Address>(&address.as_fixed_bytes().into())
-                                {
-                                    Some(account) => {
-                                        Ok(Outcome::QueryReturn(account.info.balance.to_string()))
-                                    }
-                                    None => Err(ArbiterCoreError::AccountDoesNotExistError),
-                                }
-                            }
-                            EnvironmentData::TransactionCount(address) => {
-                                match db
-                                    .state
-                                    .read()
-                                    .unwrap()
-                                    .accounts
-                                    .get::<Address>(&address.as_fixed_bytes().into())
-                                {
-                                    Some(account) => {
-                                        Ok(Outcome::QueryReturn(account.info.nonce.to_string()))
-                                    }
-                                    None => Err(ArbiterCoreError::AccountDoesNotExistError),
-                                }
-                            }
-                            EnvironmentData::Logs { filter } => {
-                                let logs = db.logs.read().unwrap();
-                                let from_block = U256::from(
-                                    filter
-                                        .block_option
-                                        .get_from_block()
-                                        .ok_or(ArbiterCoreError::MissingDataError)?
-                                        .as_number()
-                                        .ok_or(ArbiterCoreError::MissingDataError)?
-                                        .0[0],
-                                );
-                                let to_block = U256::from(
-                                    filter
-                                        .block_option
-                                        .get_to_block()
-                                        .ok_or(ArbiterCoreError::MissingDataError)?
-                                        .as_number()
-                                        .ok_or(ArbiterCoreError::MissingDataError)?
-                                        .0[0],
-                                );
-                                let mut return_logs = Vec::new();
-                                logs.keys().for_each(|blocknum| {
-                                    if blocknum >= &from_block && blocknum <= &to_block {
-                                        return_logs.extend(logs.get(blocknum).cloned().unwrap());
-                                    }
-                                });
-                                return_logs.retain(|log| {
-                                    filter.topics.iter().any(|topic_option| match topic_option {
-                                        Some(topic_val_or_array) => match topic_val_or_array {
-                                            ValueOrArray::Value(topic) => match topic {
-                                                Some(topic) => log.topics.contains(topic),
-                                                None => true,
-                                            },
-                                            ValueOrArray::Array(topics) => {
-                                                topics.iter().any(|topic| match topic {
-                                                    Some(topic) => log.topics.contains(topic),
-                                                    None => true,
-                                                })
-                                            }
-                                        },
-                                        None => true,
-                                    })
-                                });
-                                return_logs.retain(|log| {
-                                    filter.address.iter().any(|address_value_or_array| {
-                                        match address_value_or_array {
-                                            ValueOrArray::Value(address) => &log.address == address,
-
-                                            ValueOrArray::Array(addresses) => {
-                                                addresses.iter().any(|addr| &log.address == addr)
-                                            }
-                                        }
-                                    })
-                                });
-                                Ok(Outcome::QueryReturn(
-                                    serde_json::to_string(&return_logs).unwrap(),
-                                ))
-                            }
-                        };
-                        outcome_sender.send(outcome)?;
-                    }
-                    Instruction::Stop(outcome_sender) => {
-                        match event_broadcaster.send(Broadcast::StopSignal) {
-                            Ok(_) => {}
-                            Err(_) => {
-                                warn!("Stop signal was not sent to any listeners. Are there any listeners?")
-                            }
-                        }
-                        outcome_sender.send(Ok(Outcome::StopCompleted(db)))?;
-                        break;
-                    }
-                }
+                sender.send(result).map_err(|_| {
+                    ArbiterCoreError::SendError(crossbeam_channel::SendError(instruction))
+                })?
             }
             Ok(())
         });
+
         self.handle = Some(handle);
         self
     }
 
     /// Stops the execution of the environment and returns the [`ArbiterDB`] in
     /// its final state.
-    pub fn stop(mut self) -> Result<ArbiterDB, ArbiterCoreError> {
-        let (outcome_sender, outcome_receiver) = bounded(1);
-        self.socket
-            .instruction_sender
-            .send(Instruction::Stop(outcome_sender))?;
-        let outcome = outcome_receiver.recv()??;
+    // pub fn stop(mut self) -> Result<ArbiterDB, ArbiterCoreError> {
+    pub fn stop(mut self) -> Result<(), ArbiterCoreError> {
+        todo!("");
 
-        let db = match outcome {
-            Outcome::StopCompleted(stopped_db) => stopped_db,
-            _ => unreachable!(),
-        };
+        // let (outcome_sender, outcome_receiver) = bounded(1);
 
-        if let Some(label) = &self.parameters.label {
-            warn!("Stopped environment with label: {}", label);
-        } else {
-            warn!("Stopped environment with no label.");
-        }
-        drop(self.socket.instruction_sender);
-        self.handle
-            .take()
-            .unwrap()
-            .join()
-            .map_err(|_| ArbiterCoreError::JoinError)??;
-        Ok(db)
+        // self.socket
+        //     .instruction_sender
+        //     .send(Instruction::Stop(outcome_sender))?;
+
+        // let outcome = outcome_receiver.recv()??;
+
+        // let db = match outcome {
+        //     // Outcome::StopCompleted(stopped_db) => stopped_db,
+        //     Outcome::StopCompleted() => (),
+        //     _ => unreachable!(),
+        // };
+
+        // if let Some(label) = &self.parameters.label {
+        //     warn!("Stopped environment with label: {}", label);
+        // } else {
+        //     warn!("Stopped environment with no label.");
+        // }
+        // drop(self.socket.instruction_sender);
+        // self.handle
+        //     .take()
+        //     .unwrap()
+        //     .join()
+        //     .map_err(|_| ArbiterCoreError::JoinError)??;
+        // Ok(db)
     }
 }
 
@@ -680,27 +778,13 @@ pub(crate) struct Socket {
 ///
 /// Variants:
 /// * `StopSignal`: Represents a signal to stop the event logger process.
-/// * `Event(Vec<Log>)`: Represents a broadcast of a vector of Ethereum logs.
+// /// * `Event(Vec<Log>)`: Represents a broadcast of a vector of Ethereum logs.
 #[derive(Clone, Debug)]
 pub enum Broadcast {
     /// Represents a signal to stop the event logger process.
     StopSignal,
     /// Represents a broadcast of a vector of Ethereum logs.
-    Event(Vec<Log>, ReceiptData),
-}
-
-/// Convert a U256 to a U64, discarding the higher bits if the number is larger
-/// than 2^64 # Arguments
-/// * `input` - The U256 to convert.
-/// # Returns
-/// * `Ok(U64)` - The converted U64. Used for block number which is a U64.
-#[inline]
-fn convert_uint_to_u64(input: U256) -> Result<U64, ArbiterCoreError> {
-    let as_str = input.to_string();
-    match as_str.parse::<u64>() {
-        Ok(val) => Ok(val.into()),
-        Err(e) => Err(e)?,
-    }
+    Event(Vec<String>, ReceiptData),
 }
 
 #[cfg(test)]
@@ -713,33 +797,18 @@ mod tests {
 
     #[test]
     fn new_with_parameters() {
-        let environment = Environment::builder()
-            .with_label(TEST_ENV_LABEL)
-            .with_contract_size_limit(TEST_CONTRACT_SIZE_LIMIT)
-            .with_gas_limit(U256::from(TEST_GAS_LIMIT));
-        assert_eq!(environment.parameters.label, Some(TEST_ENV_LABEL.into()));
-        assert_eq!(
-            environment.parameters.contract_size_limit.unwrap(),
-            TEST_CONTRACT_SIZE_LIMIT
-        );
-        assert_eq!(
-            environment.parameters.gas_limit.unwrap(),
-            U256::from(TEST_GAS_LIMIT)
-        );
-    }
-
-    #[test]
-    fn conversion() {
-        // Test with a value that fits in u64.
-        let input = U256::from(10000);
-        assert_eq!(convert_uint_to_u64(input).unwrap(), U64::from(10000));
-
-        // Test with a value that is exactly at the limit of u64.
-        let input = U256::from(u64::MAX);
-        assert_eq!(convert_uint_to_u64(input).unwrap(), U64::from(u64::MAX));
-
-        // Test with a value that exceeds the limit of u64.
-        let input = U256::from(u64::MAX) + U256::from(1);
-        assert!(convert_uint_to_u64(input).is_err());
+        // let environment = Environment::builder()
+        //     .with_label(TEST_ENV_LABEL)
+        //     .with_contract_size_limit(TEST_CONTRACT_SIZE_LIMIT)
+        //     .with_gas_limit(Felt::from(TEST_GAS_LIMIT));
+        // assert_eq!(environment.parameters.label, Some(TEST_ENV_LABEL.into()));
+        // assert_eq!(
+        //     environment.parameters.contract_size_limit.unwrap(),
+        //     TEST_CONTRACT_SIZE_LIMIT
+        // );
+        // assert_eq!(
+        //     environment.parameters.gas_limit.unwrap(),
+        //     Felt::from(TEST_GAS_LIMIT)
+        // );
     }
 }

@@ -1,7 +1,6 @@
 [workspace]
 # List of crates included in this workspace
-# members = [, "core", "engine", "macros", "docs", "core2"]
-members = ["core", "bindings"]
+members = ["core", "bindings", "macros", "engine"]
 
 # List of crates excluded from this workspace
 exclude = ["benches", "docs"]
@@ -32,8 +31,8 @@ path = "examples/minter/main.rs"
 # Arbiter local for development
 arbiter-bindings = { path = "bindings" }
 arbiter-core = { path = "core" }
-# arbiter-engine = { path = "engine" }
-# arbiter-macros = { path = "macros" }
+arbiter-engine = { path = "engine" }
+arbiter-macros = { path = "macros" }
 
 # Arbiter crates.io for release, these need to be used to do crate releases!
 # arbiter-bindings = "0.1.7"
@@ -87,8 +86,8 @@ thiserror.workspace = true
 arbiter-bindings.workspace = true
 arbiter-core.workspace = true
 
-# arbiter-engine.workspace = true
-# arbiter-macros.workspace = true
+arbiter-engine.workspace = true
+arbiter-macros.workspace = true
 serde.workspace = true
 async-trait.workspace = true
 anyhow.workspace = true

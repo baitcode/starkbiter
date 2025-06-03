@@ -1,12 +1,20 @@
 use super::instruction::TxExecutionResult;
 use crate::errors::ArbiterCoreError;
 
-use starknet::core::types::{Felt, TransactionExecutionStatus};
+use starknet::{
+    core::types::{Felt, TransactionExecutionStatus},
+    providers::{jsonrpc::HttpTransport, JsonRpcClient, Provider, ProviderError},
+};
 
-use starknet_core::utils::get_storage_var_address;
+use starknet_core::{
+    types::{BlockId, ContractClass, StarknetError},
+    utils::get_storage_var_address,
+};
 use starknet_devnet_core::{
-    constants::ISRC6_ID_HEX, error::Error as DevnetError, starknet::Starknet, state::StarknetState,
-    state::StateReader,
+    constants::ISRC6_ID_HEX,
+    error::Error as DevnetError,
+    starknet::{starknet_config::StarknetConfig, Starknet},
+    state::{StarknetState, StateReader},
 };
 
 use starknet_devnet_types::{
@@ -16,67 +24,10 @@ use starknet_devnet_types::{
         felt::split_biguint,
         transactions::{BroadcastedTransaction, TransactionTrace},
     },
+    serde_helpers::rpc_sierra_contract_class_to_sierra_contract_class::deserialize_to_sierra_contract_class,
     starknet_api::{core::ContractAddress, state::StorageKey},
 };
-
-pub fn execute_transaction(
-    starknet: &mut Starknet,
-    tx: BroadcastedTransaction,
-) -> Result<TxExecutionResult, ArbiterCoreError> {
-    let transaction_hash = match tx {
-        BroadcastedTransaction::Invoke(tx) => starknet.add_invoke_transaction(tx),
-        BroadcastedTransaction::DeployAccount(tx) => starknet
-            .add_deploy_account_transaction(tx)
-            .map(|(hash, _)| hash),
-        BroadcastedTransaction::Declare(tx) => {
-            starknet.add_declare_transaction(tx).map(|(hash, _)| hash)
-        }
-    }
-    .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-    let trasaction_status = starknet
-        .get_transaction_execution_and_finality_status(transaction_hash)
-        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-    let transaction_trace = starknet
-        .get_transaction_trace_by_hash(transaction_hash)
-        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-    // TODO: extract execution logs here.
-    let gas_used = match transaction_trace {
-        TransactionTrace::Invoke(trace) => trace.execution_resources.l2_gas,
-        TransactionTrace::Declare(trace) => trace.execution_resources.l2_gas,
-        TransactionTrace::DeployAccount(trace) => trace.execution_resources.l2_gas,
-        TransactionTrace::L1Handler(trace) => unreachable!(),
-    };
-
-    let tx_receipt = starknet
-        .get_transaction_receipt_by_hash(&transaction_hash)
-        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-    let result = match trasaction_status.execution_status {
-        TransactionExecutionStatus::Succeeded => {
-            TxExecutionResult::Success(transaction_hash, tx_receipt)
-        }
-        TransactionExecutionStatus::Reverted => {
-            let reason = trasaction_status
-                .failure_reason
-                .or(Some("unknown".to_string()))
-                .unwrap();
-
-            TxExecutionResult::Revert(reason, tx_receipt)
-        }
-    };
-    Ok(result)
-}
-
-// impl From<starknet_devnet_types::contract_address::ContractAddress> for ContractAddress {
-
-//     fn from(address: starknet_api::ContractAddress) -> Self {
-//         ContractAddress::new(address.0).unwrap()
-//     }
-
-// }
+use tracing::trace;
 
 pub fn mint_tokens_in_erc20_contract(
     state: &mut StarknetState,
@@ -88,51 +39,69 @@ pub fn mint_tokens_in_erc20_contract(
         .map_err(|e| ArbiterCoreError::DevnetError(DevnetError::StarknetApiError(e)))?;
 
     fn read_biguint(
+        msg: String,
         state: &StarknetState,
         address: ContractAddress,
         low_key: Felt,
     ) -> Result<BigUint, ArbiterCoreError> {
-        let low_storage_key = StorageKey::try_from(low_key)
+        let low_key = StorageKey::try_from(low_key)
             .map_err(|e| ArbiterCoreError::DevnetError(DevnetError::StarknetApiError(e)))?;
 
-        let high_storage_key = StorageKey::try_from(low_key + Felt::ONE)
+        let high_key = low_key
+            .next_storage_key()
             .map_err(|e| ArbiterCoreError::DevnetError(DevnetError::StarknetApiError(e)))?;
 
         let low_val = state
-            .get_storage_at(address, low_storage_key)
+            .get_storage_at(address, low_key)
             .map_err(|e| ArbiterCoreError::DevnetError(DevnetError::BlockifierStateError(e)))?;
 
         let high_val = state
-            .get_storage_at(address, high_storage_key)
+            .get_storage_at(address, high_key)
             .map_err(|e| ArbiterCoreError::DevnetError(DevnetError::BlockifierStateError(e)))?;
+
+        trace!(
+            "Reading {:?}. Values: low: {:?} high {:?}",
+            msg,
+            low_key,
+            high_key
+        );
 
         return Ok(join_felts(&high_val, &low_val));
     }
 
     fn write_biguint(
+        msg: String,
         state: &mut StarknetState,
         address: ContractAddress,
         low_key: Felt,
         value: BigUint,
     ) -> Result<(), ArbiterCoreError> {
-        let low_storage_key = StorageKey::try_from(low_key)
+        let low_key = StorageKey::try_from(low_key)
             .map_err(|e| ArbiterCoreError::DevnetError(DevnetError::StarknetApiError(e)))?;
 
-        let high_storage_key = StorageKey::try_from(low_key + Felt::ONE)
+        let high_key = low_key
+            .next_storage_key()
             .map_err(|e| ArbiterCoreError::DevnetError(DevnetError::StarknetApiError(e)))?;
 
         let (high_val, low_val) = split_biguint(value);
 
+        trace!(
+            "Writing {:?}. Values: low: {:?} and high: {:?}.",
+            msg,
+            low_key,
+            high_key,
+        );
+
         state
             .state
             .state
-            .set_storage_at(address, low_storage_key, low_val)
+            .set_storage_at(address, low_key, low_val)
             .map_err(|e| ArbiterCoreError::DevnetError(DevnetError::BlockifierStateError(e)))?;
 
         state
             .state
             .state
-            .set_storage_at(address, high_storage_key, high_val)
+            .set_storage_at(address, high_key, high_val)
             .map_err(|e| ArbiterCoreError::DevnetError(DevnetError::BlockifierStateError(e)))?;
 
         Ok(())
@@ -141,14 +110,25 @@ pub fn mint_tokens_in_erc20_contract(
     let recepient_balance_key = get_storage_var_address("ERC20_balances", &[recipient])
         .map_err(|e| ArbiterCoreError::InternalError(e.to_string()))?;
 
-    let recepient_balance = read_biguint(&state, contract_address, recepient_balance_key)?;
+    let recepient_balance = read_biguint(
+        "recepient_balance".to_string(),
+        &state,
+        contract_address,
+        recepient_balance_key,
+    )?;
 
     let total_supply_key = get_storage_var_address("ERC20_total_supply", &[])
         .map_err(|e| ArbiterCoreError::InternalError(e.to_string()))?;
 
-    let total_supply = read_biguint(&state, contract_address, total_supply_key)?;
+    let total_supply = read_biguint(
+        "total_supply".to_string(),
+        &state,
+        contract_address,
+        total_supply_key,
+    )?;
 
     write_biguint(
+        "recepient_balance".to_string(),
         state,
         contract_address,
         recepient_balance_key,
@@ -156,6 +136,7 @@ pub fn mint_tokens_in_erc20_contract(
     )?;
 
     write_biguint(
+        "total_supply".to_string(),
         state,
         contract_address,
         total_supply_key,

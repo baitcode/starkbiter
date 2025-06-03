@@ -2,7 +2,10 @@
 //! communicate instructions and their outcomes between the
 //! [`middleware::ArbiterMiddleware`] and the [`Environment`].
 
-use starknet::core::types::{BlockId, Felt};
+use starknet::{
+    core::types::{BlockId, Felt},
+    signers::VerifyingKey,
+};
 
 use starknet_core::types as core_types;
 use starknet_devnet_types::{
@@ -30,7 +33,7 @@ use super::*;
 ///
 /// TODO: This is actually a ProviderRequestData from starknet-rs, they miss deserialise and partial_eq
 #[derive(Debug, Clone)]
-pub(crate) enum NodeInstruction {
+pub enum NodeInstruction {
     GetSpecVersion,
     GetBlockWithTxHashes {
         block_id: core_types::BlockId,
@@ -140,15 +143,15 @@ pub(crate) enum NodeInstruction {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum Instruction {
+pub enum Instruction {
     Node(NodeInstruction),
-    Cheat,
+    Cheat(CheatInstruction),
     System,
 }
 
 /// TODO: This is actually a ProviderResponseData from starknet-rs, they miss deserialise and partial_eq
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub(crate) enum NodeOutcome {
+pub enum NodeOutcome {
     SpecVersion(String),
     GetBlockWithTxHashes(core_types::MaybePendingBlockWithTxHashes),
     GetBlockWithTxs(core_types::MaybePendingBlockWithTxs),
@@ -187,8 +190,9 @@ pub(crate) enum NodeOutcome {
 /// These outcomes can be from `Call`, `Transaction`, or `BlockUpdate`
 /// instructions sent to the [`Environment`]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub(crate) enum Outcome {
+pub enum Outcome {
     Node(NodeOutcome),
+    Cheat(CheatcodesReturn),
 }
 
 type GasUsed = u64;
@@ -309,26 +313,31 @@ pub enum AccountStateSerializable {
     None,
 }
 
+#[derive(Debug, Clone)]
+pub enum CheatInstruction {
+    CreateAccount {
+        public_key: VerifyingKey,
+        class_hash: Felt,
+    },
+    CreateBlock,
+}
 /// Return values of applying cheatcodes.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CheatcodesReturn {
-    /// A `Load` returns the value of a storage slot of an account.
-    Load {
-        /// The value of the storage slot.
-        value: Felt,
-    },
-    /// A `Store` returns nothing.
-    Store,
-    /// A `Deal` returns nothing.
-    Deal,
-    /// Gets the DbAccount associated with an address.
-    Access {
-        /// Basic account information like nonce, balance, code hash, bytcode.
-        // info: AccountInfo,
-        /// todo: revm must be updated with serde deserialize, then `DbAccount`
-        /// can be used.
-        // account_state: AccountStateSerializable,
-        /// Storage slots of the account.
-        storage: HashMap<Felt, Felt>,
-    },
+    CreateAccount(ContractAddress),
+    CreateBlock,
+    // A `Store` returns nothing.
+    // Store,
+    // A `Deal` returns nothing.
+    // Deal,
+    // Gets the DbAccount associated with an address.
+    // Access {
+    //     /// Basic account information like nonce, balance, code hash, bytcode.
+    //     // info: AccountInfo,
+    //     /// todo: revm must be updated with serde deserialize, then `DbAccount`
+    //     /// can be used.
+    //     // account_state: AccountStateSerializable,
+    //     /// Storage slots of the account.
+    //     storage: HashMap<Felt, Felt>,
+    // },
 }

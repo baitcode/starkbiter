@@ -12,6 +12,7 @@
 use std::{pin::Pin, sync::Mutex};
 
 use async_trait;
+use starknet_devnet_types::starknet_api::{core::ContractAddress, crypto::utils::PublicKey};
 
 use super::*;
 use crate::environment::{instruction::*, Broadcast, Environment};
@@ -51,7 +52,7 @@ use connection::*;
 /// let mut environment = Environment::builder().build();
 ///
 /// // Retrieve the environment to create a new middleware instance
-/// let middleware = ArbiterMiddleware::new(&environment, Some("test_label"));
+/// let middleware = ArbiterMiddleware::new(&environment);
 /// ```
 /// The client can now be used for transactions with the environment.
 /// Use a seed like `Some("test_label")` for maintaining a
@@ -59,43 +60,62 @@ use connection::*;
 /// useful for debugging and post-processing.
 #[derive(Debug)]
 pub struct ArbiterMiddleware {
-    signing_key: SigningKey,
     connection: Connection,
+
+    #[allow(unused)]
+    pub label: Option<String>,
 }
 
 impl ArbiterMiddleware {
-    pub fn new(environment: &Environment) -> Result<Arc<Self>, ArbiterCoreError> {
+    pub fn new(
+        environment: &Environment,
+        seed_and_label: Option<&str>,
+    ) -> Result<Arc<Self>, ArbiterCoreError> {
         let connection = Connection::from(environment);
-        let signing_key = SigningKey::from_random();
 
         info!(
             "Created new `ArbiterMiddleware` instance from a fork -- attached to environment labeled: {:?}",
             environment.parameters.label
         );
         Ok(Arc::new(Self {
-            signing_key,
             connection,
+            label: seed_and_label.map(|s| s.to_string()),
         }))
     }
-}
 
-#[async_trait::async_trait]
-impl Signer for ArbiterMiddleware {
-    type GetPublicKeyError = Infallible;
-    type SignError = SignError;
-
-    async fn get_public_key(&self) -> Result<VerifyingKey, Self::GetPublicKeyError> {
-        Ok(self.signing_key.verifying_key())
+    pub async fn create_account(
+        &self,
+        public_key: VerifyingKey,
+        class_hash: Felt,
+    ) -> Result<ContractAddress, ProviderError> {
+        return Ok(self
+            .connection
+            .create_account(public_key, class_hash)
+            .await?);
     }
 
-    async fn sign_hash(&self, hash: &Felt) -> Result<Signature, Self::SignError> {
-        Ok(self.signing_key.sign(hash)?)
-    }
-
-    fn is_interactive(&self, _context: SignerInteractivityContext) -> bool {
-        false
+    pub async fn create_block(&self) -> Result<(), ProviderError> {
+        return Ok(self.connection.create_block().await?);
     }
 }
+
+// #[async_trait::async_trait]
+// impl Signer for LocalSigner {
+//     type GetPublicKeyError = Infallible;
+//     type SignError = SignError;
+
+//     async fn get_public_key(&self) -> Result<VerifyingKey, Self::GetPublicKeyError> {
+//         Ok(self.signing_key.verifying_key())
+//     }
+
+//     async fn sign_hash(&self, hash: &Felt) -> Result<Signature, Self::SignError> {
+//         Ok(self.signing_key.sign(hash)?)
+//     }
+
+//     fn is_interactive(&self, _context: SignerInteractivityContext) -> bool {
+//         false
+//     }
+// }
 
 //     pub fn new(
 //         environment: &Environment,

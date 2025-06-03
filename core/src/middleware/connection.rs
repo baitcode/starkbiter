@@ -2,6 +2,7 @@
 use std::sync::Weak;
 
 use async_trait::async_trait;
+use starknet_devnet_types::starknet_api::core::ContractAddress;
 
 use super::*;
 use crate::environment::{InstructionSender, OutcomeReceiver, OutcomeSender};
@@ -78,6 +79,40 @@ impl Connection {
             .map_err(|_| ProviderError::RateLimited)?;
 
         return Ok(res);
+    }
+}
+
+// Cheating
+impl Connection {
+    pub async fn create_account(
+        &self,
+        public_key: VerifyingKey,
+        class_hash: Felt,
+    ) -> Result<ContractAddress, ProviderError> {
+        let to_send = Instruction::Cheat(CheatInstruction::CreateAccount {
+            public_key,
+            class_hash,
+        });
+
+        let res = self.send_instruction_recv_outcome(to_send).await?;
+
+        if let Outcome::Cheat(CheatcodesReturn::CreateAccount(address)) = res {
+            Ok(address)
+        } else {
+            Err(ProviderError::RateLimited)
+        }
+    }
+
+    pub async fn create_block(&self) -> Result<(), ProviderError> {
+        let to_send = Instruction::Cheat(CheatInstruction::CreateBlock);
+
+        let res = self.send_instruction_recv_outcome(to_send).await?;
+
+        if let Outcome::Cheat(CheatcodesReturn::CreateBlock) = res {
+            Ok(())
+        } else {
+            Err(ProviderError::RateLimited)
+        }
     }
 }
 

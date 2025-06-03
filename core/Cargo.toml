@@ -29,6 +29,8 @@ starknet-devnet-core = { path = "/Users/baitcode/work/starknet/starknet-devnet/c
 starknet-devnet-types = { path = "/Users/baitcode/work/starknet/starknet-devnet/crates/starknet-devnet-types" }
 sha2 = { version = "0.10.7" }
 
+anyhow = "1.0.98"
+
 # Serialization
 serde.workspace = true
 serde_json.workspace = true

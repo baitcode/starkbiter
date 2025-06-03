@@ -196,6 +196,8 @@ dependencies = [
  "anyhow",
  "arbiter-bindings",
  "arbiter-core",
+ "arbiter-engine",
+ "arbiter-macros",
  "assert_cmd",
  "async-trait",
  "clap",
@@ -226,6 +228,7 @@ dependencies = [
 name = "arbiter-core"
 version = "0.11.0"
 dependencies = [
+ "anyhow",
  "arbiter-bindings",
  "assert_matches",
  "async-stream",
@@ -256,6 +259,39 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uint",
+]
+
+[[package]]
+name = "arbiter-engine"
+version = "0.4.0"
+dependencies = [
+ "anyhow",
+ "arbiter-bindings",
+ "arbiter-core",
+ "arbiter-macros",
+ "async-stream",
+ "async-trait",
+ "crossbeam-channel",
+ "ethers",
+ "futures",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-stream",
+ "toml 0.8.12",
+ "tracing",
+ "tracing-subscriber",
+ "tracing-test",
+]
+
+[[package]]
+name = "arbiter-macros"
+version = "0.1.4"
+dependencies = [
+ "quote",
+ "syn 2.0.101",
 ]
 
 [[package]]
@@ -7766,6 +7802,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-stream"
+version = "0.1.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eca58d7bba4a75707817a2c44174253f9236b2d5fbd055602e9d5c07c139a047"
+dependencies = [
+ "futures-core",
+ "pin-project-lite",
+ "tokio",
+]
+
+[[package]]
 name = "tokio-tungstenite"
 version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7983,6 +8030,27 @@ dependencies = [
  "tracing-core",
  "tracing-log",
  "tracing-serde",
+]
+
+[[package]]
+name = "tracing-test"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "557b891436fe0d5e0e363427fc7f217abf9ccd510d5136549847bdcbcd011d68"
+dependencies = [
+ "tracing-core",
+ "tracing-subscriber",
+ "tracing-test-macro",
+]
+
+[[package]]
+name = "tracing-test-macro"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04659ddb06c87d233c566112c1c9c5b9e98256d9af50ec3bc9c8327f873a7568"
+dependencies = [
+ "quote",
+ "syn 2.0.101",
 ]
 
 [[package]]

@@ -18,16 +18,16 @@
 
 use std::thread::{self, JoinHandle};
 
+mod constants;
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
-
 use polars::prelude::ArrayCollectIterExt;
 use starknet::contract;
+use starknet::providers::Url;
 use starknet_core::types::{self as core_types};
-use starknet_devnet_core::constants::{
-    self, ETH_ERC20_CONTRACT_ADDRESS, STRK_ERC20_CONTRACT_ADDRESS,
-};
+use starknet_devnet_core::constants::{self as devnet_constants};
 
 use starknet_devnet_core::error::Error as DevnetError;
+use starknet_devnet_core::starknet::starknet_config::ForkConfig;
 use starknet_devnet_core::{
     starknet::{starknet_config::StarknetConfig, Starknet},
     state::{StarknetState, StateReader},
@@ -38,8 +38,10 @@ use starknet_devnet_types::rpc::transactions::{
     BroadcastedDeclareTransaction, BroadcastedDeployAccountTransaction,
     BroadcastedInvokeTransaction, BroadcastedTransaction, SimulationFlag, TransactionTrace,
 };
+use starknet_devnet_types::starknet_api::transaction::fields::{Calldata, ContractAddressSalt};
 use starknet_devnet_types::{contract_address::ContractAddress, num_bigint::BigUint};
 
+use starknet_devnet_core::state::State;
 use starknet_devnet_types::rpc::block::{self, BlockResult};
 
 use starknet_devnet_types::starknet_api::state::StorageKey;
@@ -113,6 +115,10 @@ pub struct EnvironmentParameters {
     /// The contract size limit for the [`Environment`].
     pub contract_size_limit: Option<usize>,
 
+    pub starknet_fork_url: Option<String>,
+    pub starknet_fork_block_number: Option<u64>,
+    pub starknet_fork_block_hash: Option<core_types::Felt>,
+
     /// Enables inner contract logs to be printed to the console.
     pub console_logs: bool,
 
@@ -128,7 +134,6 @@ pub struct EnvironmentParameters {
 /// size limit, and a database for the [`Environment`].
 pub struct EnvironmentBuilder {
     parameters: EnvironmentParameters,
-    // db: ArbiterDB,
 }
 
 impl EnvironmentBuilder {
@@ -148,57 +153,12 @@ impl EnvironmentBuilder {
         self
     }
 
-    /// Sets the gas limit for the [`Environment`].
-    pub fn with_gas_limit(mut self, gas_limit: BigUint) -> Self {
-        self.parameters.gas_limit = Some(gas_limit);
-        self
-    }
-
-    /// Sets the contract size limit for the [`Environment`].
-    pub fn with_contract_size_limit(mut self, contract_size_limit: usize) -> Self {
-        self.parameters.contract_size_limit = Some(contract_size_limit);
-        self
-    }
-
-    /// Sets the state for the [`Environment`]. This can come from a saved state
-    /// of a simulation or a [`database::fork::Fork`].
-    // pub fn with_state(mut self, state: impl Into<CacheDB<EmptyDB>>) -> Self {
-    //     self.db.state = Arc::new(RwLock::new(state.into()));
-    //     self
-    // }
-
-    /// Sets the logs for the [`Environment`]. This can come from a saved state
-    /// of a simulation and can be useful for doing analysis.
-    // pub fn with_logs(
-    //     mut self,
-    //     logs: impl Into<std::collections::HashMap<U256, Vec<eLog>>>,
-    // ) -> Self {
-    //     self.db.logs = Arc::new(RwLock::new(logs.into()));
-    //     self
-    // }
-
-    /// Sets the entire database for the [`Environment`] including both the
-    /// state and logs. This can come from the saved state of a simulation and
-    /// can be useful for doing analysis.
-    pub fn with_arbiter_db(
-        mut self,
-        // db: ArbiterDB
-    ) -> Self {
-        // self.db = db;
-        self
-    }
-
-    /// Enables inner contract logs to be printed to the console as `trace`
-    /// level logs prepended with "Console logs: ".
-    pub fn with_console_logs(mut self) -> Self {
-        self.parameters.console_logs = true;
-        self
-    }
-
-    /// Turns on gas payments for transactions so that the [`EVM`] will
-    /// automatically pay for gas and revert if balance is not met by sender.
-    pub fn with_pay_gas(mut self) -> Self {
-        self.parameters.pay_gas = true;
+    /// Sets fork url and block for the [`Environment`].
+    /// Important: this does not support forking by tag.
+    pub fn with_fork(mut self, url: Url, block_number: u64, block_hash: core_types::Felt) -> Self {
+        self.parameters.starknet_fork_url = Some(url.to_string());
+        self.parameters.starknet_fork_block_number = Some(block_number);
+        self.parameters.starknet_fork_block_hash = Some(block_hash);
         self
     }
 }
@@ -255,470 +215,60 @@ impl Environment {
         // let inspector = self.inspector.take().unwrap();
 
         // Pull communication clones to move into a new thread.
-        let instruction_receiver = self.socket.instruction_receiver.clone();
+        let instruction_receiver: Receiver<(
+            Instruction,
+            Sender<Result<Outcome, ArbiterCoreError>>,
+        )> = self.socket.instruction_receiver.clone();
+
         let event_broadcaster = self.socket.event_broadcaster.clone();
+
+        // let parameters = self.parameters.clone();
+
+        let (fork_config, predeploy_erc20) =
+            if let Some(url_str) = self.parameters.starknet_fork_url.clone() {
+                (
+                    ForkConfig {
+                        url: url_str.parse().ok(),
+                        block_number: Some(self.parameters.starknet_fork_block_number.unwrap()),
+                        block_hash: Some(self.parameters.starknet_fork_block_hash.unwrap()),
+                    },
+                    true,
+                )
+                // (ForkConfig::default(), true)
+            } else {
+                (ForkConfig::default(), true)
+            };
 
         // Move the EVM and its socket to a new thread and retrieve this handle
         let handle = thread::spawn(move || {
-            // TODO: support forking
-            // TODO: Simulated block production
+            let result = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    // let mut evm = Evm::new(db, inspector, parameters.clone());
+                    let starknet_config = &StarknetConfig {
+                        fork_config,
+                        // predeploy_erc20,
+                        ..StarknetConfig::default()
+                    };
 
-            // let mut env = Env::default();
-            // env.cfg.limit_contract_code_size = self.parameters.contract_size_limit;
-            // env.block.gas_limit = self.parameters.gas_limit.unwrap_or(eU256::MAX);
+                    // TODO: support forking
+                    // TODO: Simulated block production
 
-            let mut starknet_config = &StarknetConfig::default();
-            // Fork configuration
+                    // let mut env = Env::default();
+                    // env.cfg.limit_contract_code_size = self.parameters.contract_size_limit;
+                    // env.block.gas_limit = self.parameters.gas_limit.unwrap_or(eU256::MAX);
 
-            let mut starknet = Starknet::new(starknet_config).unwrap();
+                    process_instructions(
+                        starknet_config,
+                        label.unwrap_or_else(|| "default".to_string()),
+                        instruction_receiver,
+                    )
+                    .await
+                });
 
-            // Initialize counters that are returned on some receipts.
-            // let mut transaction_index = 0_u64;
-            // let mut last_executed_gas_price: u128 = 0;
-            // let mut cumulative_gas_per_block = BigUint::from(0_u128);
-
-            // Loop over the instructions sent through the socket.
-            while let Ok((instruction, sender)) = instruction_receiver.recv() {
-                trace!(
-                    "Instruction {:?} received by environment labeled: {:?}",
-                    instruction,
-                    label
-                );
-
-                let result: Result<Outcome, ArbiterCoreError> = match instruction {
-                    Instruction::Node(ref basic_instruction) => match basic_instruction {
-                        NodeInstruction::GetSpecVersion => {
-                            let outcome =
-                                Outcome::Node(NodeOutcome::SpecVersion("unknown".to_string()));
-                            Ok(outcome)
-                        }
-
-                        NodeInstruction::GetBlockWithTxHashes { block_id } => {
-                            let block_result = starknet
-                                .get_block_with_transactions(block_id)
-                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-                            let outcome: core_types::MaybePendingBlockWithTxHashes =
-                                match block_result {
-                                    BlockResult::PendingBlock(block) => {
-                                        core_types::MaybePendingBlockWithTxHashes::PendingBlock(
-                                            core_types::PendingBlockWithTxHashes::from(block),
-                                        )
-                                    }
-                                    BlockResult::Block(block) => {
-                                        core_types::MaybePendingBlockWithTxHashes::Block(
-                                            core_types::BlockWithTxHashes::from(block),
-                                        )
-                                    }
-                                };
-
-                            Ok(Outcome::Node(NodeOutcome::GetBlockWithTxHashes(outcome)))
-                        }
-
-                        NodeInstruction::GetBlockWithTxs { block_id } => {
-                            let block_result = starknet
-                                .get_block_with_transactions(&block_id)
-                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-                            let outcome: core_types::MaybePendingBlockWithTxs = match block_result {
-                                BlockResult::PendingBlock(block) => {
-                                    core_types::MaybePendingBlockWithTxs::PendingBlock(
-                                        core_types::PendingBlockWithTxs::from(block),
-                                    )
-                                }
-                                BlockResult::Block(block) => {
-                                    core_types::MaybePendingBlockWithTxs::Block(
-                                        core_types::BlockWithTxs::from(block),
-                                    )
-                                }
-                            };
-
-                            Ok(Outcome::Node(NodeOutcome::GetBlockWithTxs(outcome)))
-                        }
-
-                        NodeInstruction::GetBlockWithReceipts { block_id } => {
-                            let block_result = starknet
-                                .get_block_with_receipts(&block_id)
-                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-                            let outcome: core_types::MaybePendingBlockWithReceipts =
-                                match block_result {
-                                    BlockResult::PendingBlock(block) => {
-                                        core_types::MaybePendingBlockWithReceipts::PendingBlock(
-                                            core_types::PendingBlockWithReceipts::from(block),
-                                        )
-                                    }
-                                    BlockResult::Block(block) => {
-                                        core_types::MaybePendingBlockWithReceipts::Block(
-                                            core_types::BlockWithReceipts::from(block),
-                                        )
-                                    }
-                                };
-
-                            Ok(Outcome::Node(NodeOutcome::GetBlockWithReceipts(outcome)))
-                        }
-
-                        NodeInstruction::GetStateUpdate { block_id } => {
-                            let res = starknet
-                                .block_state_update(block_id)
-                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-                            Ok(Outcome::Node(NodeOutcome::GetStateUpdate(res.into())))
-                        }
-
-                        NodeInstruction::GetStorageAt {
-                            contract_address,
-                            key,
-                            // TODO: hmmmm, something is off
-                            block_id,
-                        } => {
-                            let state = starknet.get_state();
-
-                            let contract_address = api_core::ContractAddress::try_from(
-                                *contract_address,
-                            )
-                            .map_err(|e| {
-                                ArbiterCoreError::DevnetError(DevnetError::StarknetApiError(e))
-                            })?;
-
-                            let storage_key = StorageKey::try_from(*key).map_err(|e| {
-                                ArbiterCoreError::DevnetError(DevnetError::StarknetApiError(e))
-                            })?;
-
-                            let outcome = state
-                                .get_storage_at(contract_address, storage_key)
-                                .map_err(|e| {
-                                    ArbiterCoreError::DevnetError(
-                                        DevnetError::BlockifierStateError(e),
-                                    )
-                                })?;
-
-                            Ok(Outcome::Node(NodeOutcome::GetStorageAt(outcome)))
-                        }
-
-                        NodeInstruction::GetMessagesStatus { transaction_hash } => {
-                            let outcome = starknet
-                                .get_messages_status(*transaction_hash)
-                                .unwrap_or(Vec::new());
-                            Ok(Outcome::Node(NodeOutcome::GetMessagesStatus(
-                                outcome.iter().map(Into::into).collect(),
-                            )))
-                        }
-
-                        NodeInstruction::GetTransactionStatus { transaction_hash } => {
-                            let transaction_hash = core_types::Felt::try_from(transaction_hash)
-                                .map_err(|e| ArbiterCoreError::InternalError(e.to_string()))?;
-
-                            let outcome = starknet
-                                .get_transaction_execution_and_finality_status(transaction_hash)
-                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-                            Ok(Outcome::Node(NodeOutcome::GetTransactionStatus(
-                                outcome.into(),
-                            )))
-                        }
-
-                        NodeInstruction::GetTransactionByHash { transaction_hash } => {
-                            let transaction_hash = core_types::Felt::try_from(transaction_hash)
-                                .map_err(|e| ArbiterCoreError::InternalError(e.to_string()))?;
-
-                            let transaction = starknet
-                                .get_transaction_by_hash(transaction_hash)
-                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-                            Ok(Outcome::Node(NodeOutcome::GetTransactionByHash(
-                                core_types::Transaction::from(transaction.clone()),
-                            )))
-                        }
-                        NodeInstruction::GetTransactionByBlockIdAndIndex { block_id, index } => {
-                            let transaction = starknet
-                                .get_transaction_by_block_id_and_index(&block_id, *index)
-                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-                            Ok(Outcome::Node(NodeOutcome::GetTransactionByBlockIdAndIndex(
-                                core_types::Transaction::from(transaction.clone()),
-                            )))
-                        }
-                        NodeInstruction::GetTransactionReceipt { transaction_hash } => {
-                            let transaction_hash = core_types::Felt::try_from(transaction_hash)
-                                .map_err(|e| ArbiterCoreError::InternalError(e.to_string()))?;
-
-                            let receipt = starknet
-                                .get_transaction_receipt_by_hash(&transaction_hash)
-                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-                            Ok(Outcome::Node(NodeOutcome::GetTransactionReceipt(
-                                core_types::TransactionReceiptWithBlockInfo::from(receipt),
-                            )))
-                        }
-                        NodeInstruction::GetClass {
-                            block_id,
-                            class_hash,
-                        } => {
-                            let klass = starknet
-                                .get_class(&block_id, *class_hash)
-                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-                            Ok(Outcome::Node(NodeOutcome::GetClass(
-                                klass.try_into().map_err(|e: Error| {
-                                    ArbiterCoreError::InternalError(e.to_string())
-                                })?,
-                            )))
-                        }
-                        NodeInstruction::GetClassHashAt {
-                            block_id,
-                            contract_address,
-                        } => {
-                            let contract_address = ContractAddress::new(*contract_address)
-                                .expect("Should always work");
-
-                            let class_hash = starknet
-                                .get_class_hash_at(&block_id, contract_address)
-                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-                            Ok(Outcome::Node(NodeOutcome::GetClassHashAt(class_hash)))
-                        }
-                        NodeInstruction::GetClassAt {
-                            block_id,
-                            contract_address,
-                        } => {
-                            let contract_address = ContractAddress::new(*contract_address)
-                                .expect("Should always work");
-
-                            let contract_class = starknet
-                                .get_class_at(&block_id, contract_address)
-                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-                            Ok(Outcome::Node(NodeOutcome::GetClassAt(
-                                contract_class.try_into().map_err(|e: Error| {
-                                    ArbiterCoreError::InternalError(e.to_string())
-                                })?,
-                            )))
-                        }
-                        NodeInstruction::GetBlockTransactionCount { block_id } => {
-                            let count = starknet
-                                .get_block_txs_count(&block_id)
-                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-                            Ok(Outcome::Node(NodeOutcome::GetBlockTransactionCount(count)))
-                        }
-                        NodeInstruction::BlockNumber => {
-                            let block = starknet
-                                .get_latest_block()
-                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-                            Ok(Outcome::Node(NodeOutcome::BlockNumber(
-                                block.block_number().0,
-                            )))
-                        }
-                        NodeInstruction::BlockHashAndNumber => {
-                            let block = starknet
-                                .get_latest_block()
-                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-                            Ok(Outcome::Node(NodeOutcome::BlockHashAndNumber(
-                                core_types::BlockHashAndNumber {
-                                    block_hash: block.block_hash(),
-                                    block_number: block.block_number().0,
-                                },
-                            )))
-                        }
-                        NodeInstruction::ChainId => {
-                            let chain_id = starknet.config.chain_id;
-                            Ok(Outcome::Node(NodeOutcome::ChainId(chain_id.into())))
-                        }
-                        NodeInstruction::Syncing => Ok(Outcome::Node(NodeOutcome::Syncing(
-                            core_types::SyncStatusType::NotSyncing,
-                        ))),
-                        NodeInstruction::GetEvents {
-                            filter,
-                            continuation_token,
-                            chunk_size,
-                        } => {
-                            let skip = if let Some(s) = continuation_token {
-                                s.parse::<u64>()
-                                    .expect("Continuation token should be a valid u64")
-                            } else {
-                                0
-                            };
-
-                            let chunk_size: usize = if let Some(size) = chunk_size {
-                                *size as usize
-                            } else {
-                                50_usize // TODO: Default chunk size. Move to config
-                            };
-
-                            let (events, has_filtered_events) = starknet
-                                .get_events(
-                                    filter.from_block,
-                                    filter.to_block,
-                                    match filter.address {
-                                        Some(address) => Some(
-                                            ContractAddress::new(address)
-                                                .expect("Should always work"),
-                                        ),
-                                        None => None,
-                                    },
-                                    filter.keys.clone(),
-                                    skip.try_into().expect("Skip should be a valid usize"),
-                                    Some(chunk_size),
-                                )
-                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-                            let continuation_token = if events.len() < chunk_size {
-                                Option::None
-                            } else {
-                                Option::Some(format!("{}", skip + events.len() as u64))
-                            };
-
-                            let page = core_types::EventsPage {
-                                events: events.iter().map(|e| e.into()).collect(),
-                                continuation_token,
-                            };
-
-                            Ok(Outcome::Node(NodeOutcome::GetEvents(page)))
-                        }
-                        NodeInstruction::Call { request, block_id } => {
-                            let res = starknet
-                                .call(
-                                    block_id,
-                                    request.contract_address,
-                                    request.entry_point_selector,
-                                    request.calldata.clone(),
-                                )
-                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-                            Ok(Outcome::Node(NodeOutcome::Call(res)))
-                        }
-
-                        NodeInstruction::AddInvokeTransaction { transaction } => {
-                            let tx_hash = starknet
-                                .add_invoke_transaction(BroadcastedInvokeTransaction::V3(
-                                    transaction.clone().into(),
-                                ))
-                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-                            Ok(Outcome::Node(NodeOutcome::AddInvokeTransaction(
-                                core_types::InvokeTransactionResult {
-                                    transaction_hash: tx_hash,
-                                },
-                            )))
-                        }
-                        NodeInstruction::AddDeclareTransaction { transaction } => {
-                            let (tx_hash, class_hash) = starknet
-                                .add_declare_transaction(BroadcastedDeclareTransaction::V3(
-                                    Box::new(transaction.clone().into()),
-                                ))
-                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-                            Ok(Outcome::Node(NodeOutcome::AddDeclareTransaction(
-                                core_types::DeclareTransactionResult {
-                                    transaction_hash: tx_hash,
-                                    class_hash,
-                                },
-                            )))
-                        }
-                        NodeInstruction::AddDeployAccountTransaction { transaction } => {
-                            let (tx_hash, contract_address) = starknet
-                                .add_deploy_account_transaction(
-                                    BroadcastedDeployAccountTransaction::V3(
-                                        transaction.clone().into(),
-                                    ),
-                                )
-                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-                            Ok(Outcome::Node(NodeOutcome::AddDeployAccountTransaction(
-                                core_types::DeployAccountTransactionResult {
-                                    transaction_hash: tx_hash,
-                                    contract_address: core_types::Felt::from(contract_address),
-                                },
-                            )))
-                        }
-                        NodeInstruction::TraceTransaction { transaction_hash } => {
-                            let trace = starknet
-                                .get_transaction_trace_by_hash(*transaction_hash)
-                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-                            Ok(Outcome::Node(NodeOutcome::TraceTransaction(trace.into())))
-                        }
-                        NodeInstruction::SimulateTransactions {
-                            block_id,
-                            transactions,
-                            simulation_flags,
-                        } => {
-                            let res = starknet
-                                .simulate_transactions(
-                                    &block_id,
-                                    transactions
-                                        .iter()
-                                        .cloned()
-                                        .map(Into::into)
-                                        .collect::<Vec<BroadcastedTransaction>>()
-                                        .as_slice(),
-                                    simulation_flags.iter().cloned().map(Into::into).collect(),
-                                )
-                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-                            Ok(Outcome::Node(NodeOutcome::SimulateTransactions(
-                                res.iter().cloned().map(Into::into).collect(),
-                            )))
-                        }
-                        NodeInstruction::TraceBlockTransactions { block_id } => {
-                            let res = starknet
-                                .get_transaction_traces_from_block(&block_id)
-                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-                            Ok(Outcome::Node(NodeOutcome::TraceBlockTransactions(
-                                res.iter().cloned().map(Into::into).collect(),
-                            )))
-                        }
-                        NodeInstruction::EstimateFee {
-                            request,
-                            simulate_flags,
-                            block_id,
-                        } => {
-                            let txs = &[BroadcastedTransaction::from(request.clone())];
-
-                            // NOTE: good example of From trait superiority
-                            let simulation_flags = &[SimulationFlag::from(*simulate_flags)];
-
-                            let fees = starknet
-                                .estimate_fee(&block_id, txs, simulation_flags)
-                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-                            Ok(Outcome::Node(NodeOutcome::EstimateFee(
-                                fees.iter().cloned().map(Into::into).collect(),
-                            )))
-                        }
-                        NodeInstruction::EstimateMessageFee { message, block_id } => {
-                            let fee = starknet
-                                .estimate_message_fee(&block_id, message.clone())
-                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-                            Ok(Outcome::Node(NodeOutcome::EstimateMessageFee(fee.into())))
-                        }
-                        NodeInstruction::GetNonce {
-                            block_id,
-                            contract_address,
-                        } => {
-                            let contract_address = ContractAddress::new(*contract_address)
-                                .expect("Should always work.");
-
-                            let nonce = starknet
-                                .contract_nonce_at_block(&block_id, contract_address)
-                                .map_err(|e| ArbiterCoreError::DevnetError(e))?;
-
-                            Ok(Outcome::Node(NodeOutcome::GetNonce(nonce.into())))
-                        }
-                    },
-                    Instruction::Cheat => todo!(),
-                    Instruction::System => todo!(),
-                };
-
-                sender.send(result).map_err(|_| {
-                    ArbiterCoreError::SendError(crossbeam_channel::SendError(instruction))
-                })?
-            }
-            Ok(())
+            Ok(result?)
         });
 
         self.handle = Some(handle);
@@ -811,4 +361,520 @@ mod tests {
         //     Felt::from(TEST_GAS_LIMIT)
         // );
     }
+}
+
+async fn process_instructions(
+    starknet_config: &StarknetConfig,
+    label: String,
+    instruction_receiver: Receiver<(Instruction, Sender<Result<Outcome, ArbiterCoreError>>)>,
+) -> Result<(), ArbiterCoreError> {
+    trace!(
+        "Forking url: {:?} at blockHash {:?} and block number: {:?}. Erc20 predeploy: {:?}",
+        starknet_config.fork_config.url,
+        starknet_config.fork_config.block_hash,
+        starknet_config.fork_config.block_number,
+        false // starknet_config.predeploy_erc20,
+    );
+
+    // Fork configuration
+    let mut starknet = Starknet::new(&starknet_config).unwrap();
+
+    trace!("Devnet created");
+
+    // Initialize counters that are returned on some receipts.
+    // let mut transaction_index = 0_u64;
+    // let mut last_executed_gas_price: u128 = 0;
+    // let mut cumulative_gas_per_block = BigUint::from(0_u128);
+
+    // Loop over the instructions sent through the socket.
+    while let Ok((instruction, sender)) = instruction_receiver.recv() {
+        trace!(
+            "Instruction {:?} received by environment labeled: {:?}",
+            instruction,
+            label
+        );
+
+        let result: Result<Outcome, ArbiterCoreError> = match instruction {
+            Instruction::Node(ref basic_instruction) => match basic_instruction {
+                NodeInstruction::GetSpecVersion => {
+                    let outcome = Outcome::Node(NodeOutcome::SpecVersion("unknown".to_string()));
+                    Ok(outcome)
+                }
+                NodeInstruction::GetBlockWithTxHashes { block_id } => {
+                    let block_result = starknet
+                        .get_block_with_transactions(block_id)
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    let outcome: core_types::MaybePendingBlockWithTxHashes = match block_result {
+                        BlockResult::PendingBlock(block) => {
+                            core_types::MaybePendingBlockWithTxHashes::PendingBlock(
+                                core_types::PendingBlockWithTxHashes::from(block),
+                            )
+                        }
+                        BlockResult::Block(block) => {
+                            core_types::MaybePendingBlockWithTxHashes::Block(
+                                core_types::BlockWithTxHashes::from(block),
+                            )
+                        }
+                    };
+
+                    Ok(Outcome::Node(NodeOutcome::GetBlockWithTxHashes(outcome)))
+                }
+                NodeInstruction::GetBlockWithTxs { block_id } => {
+                    let block_result = starknet
+                        .get_block_with_transactions(&block_id)
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    let outcome: core_types::MaybePendingBlockWithTxs = match block_result {
+                        BlockResult::PendingBlock(block) => {
+                            core_types::MaybePendingBlockWithTxs::PendingBlock(
+                                core_types::PendingBlockWithTxs::from(block),
+                            )
+                        }
+                        BlockResult::Block(block) => core_types::MaybePendingBlockWithTxs::Block(
+                            core_types::BlockWithTxs::from(block),
+                        ),
+                    };
+
+                    Ok(Outcome::Node(NodeOutcome::GetBlockWithTxs(outcome)))
+                }
+                NodeInstruction::GetBlockWithReceipts { block_id } => {
+                    let block_result = starknet
+                        .get_block_with_receipts(&block_id)
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    let outcome: core_types::MaybePendingBlockWithReceipts = match block_result {
+                        BlockResult::PendingBlock(block) => {
+                            core_types::MaybePendingBlockWithReceipts::PendingBlock(
+                                core_types::PendingBlockWithReceipts::from(block),
+                            )
+                        }
+                        BlockResult::Block(block) => {
+                            core_types::MaybePendingBlockWithReceipts::Block(
+                                core_types::BlockWithReceipts::from(block),
+                            )
+                        }
+                    };
+
+                    Ok(Outcome::Node(NodeOutcome::GetBlockWithReceipts(outcome)))
+                }
+                NodeInstruction::GetStateUpdate { block_id } => {
+                    let res = starknet
+                        .block_state_update(block_id)
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    Ok(Outcome::Node(NodeOutcome::GetStateUpdate(res.into())))
+                }
+                NodeInstruction::GetStorageAt {
+                    contract_address,
+                    key,
+                    // TODO: hmmmm, something is off
+                    block_id,
+                } => {
+                    let state = starknet.get_state();
+
+                    let contract_address = api_core::ContractAddress::try_from(*contract_address)
+                        .map_err(|e| {
+                        ArbiterCoreError::DevnetError(DevnetError::StarknetApiError(e))
+                    })?;
+
+                    let storage_key = StorageKey::try_from(*key).map_err(|e| {
+                        ArbiterCoreError::DevnetError(DevnetError::StarknetApiError(e))
+                    })?;
+
+                    let outcome = state
+                        .get_storage_at(contract_address, storage_key)
+                        .map_err(|e| {
+                            ArbiterCoreError::DevnetError(DevnetError::BlockifierStateError(e))
+                        })?;
+
+                    Ok(Outcome::Node(NodeOutcome::GetStorageAt(outcome)))
+                }
+                NodeInstruction::GetMessagesStatus { transaction_hash } => {
+                    let outcome = starknet
+                        .get_messages_status(*transaction_hash)
+                        .unwrap_or(Vec::new());
+                    Ok(Outcome::Node(NodeOutcome::GetMessagesStatus(
+                        outcome.iter().map(Into::into).collect(),
+                    )))
+                }
+                NodeInstruction::GetTransactionStatus { transaction_hash } => {
+                    let transaction_hash = core_types::Felt::try_from(transaction_hash)
+                        .map_err(|e| ArbiterCoreError::InternalError(e.to_string()))?;
+
+                    let outcome = starknet
+                        .get_transaction_execution_and_finality_status(transaction_hash)
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    Ok(Outcome::Node(NodeOutcome::GetTransactionStatus(
+                        outcome.into(),
+                    )))
+                }
+                NodeInstruction::GetTransactionByHash { transaction_hash } => {
+                    let transaction_hash = core_types::Felt::try_from(transaction_hash)
+                        .map_err(|e| ArbiterCoreError::InternalError(e.to_string()))?;
+
+                    let transaction = starknet
+                        .get_transaction_by_hash(transaction_hash)
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    Ok(Outcome::Node(NodeOutcome::GetTransactionByHash(
+                        core_types::Transaction::from(transaction.clone()),
+                    )))
+                }
+                NodeInstruction::GetTransactionByBlockIdAndIndex { block_id, index } => {
+                    let transaction = starknet
+                        .get_transaction_by_block_id_and_index(&block_id, *index)
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    Ok(Outcome::Node(NodeOutcome::GetTransactionByBlockIdAndIndex(
+                        core_types::Transaction::from(transaction.clone()),
+                    )))
+                }
+                NodeInstruction::GetTransactionReceipt { transaction_hash } => {
+                    let transaction_hash = core_types::Felt::try_from(transaction_hash)
+                        .map_err(|e| ArbiterCoreError::InternalError(e.to_string()))?;
+
+                    let receipt = starknet
+                        .get_transaction_receipt_by_hash(&transaction_hash)
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    Ok(Outcome::Node(NodeOutcome::GetTransactionReceipt(
+                        core_types::TransactionReceiptWithBlockInfo::from(receipt),
+                    )))
+                }
+                NodeInstruction::GetClass {
+                    block_id,
+                    class_hash,
+                } => {
+                    let klass = starknet
+                        .get_class(&block_id, *class_hash)
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    Ok(Outcome::Node(NodeOutcome::GetClass(
+                        klass
+                            .try_into()
+                            .map_err(|e: Error| ArbiterCoreError::InternalError(e.to_string()))?,
+                    )))
+                }
+                NodeInstruction::GetClassHashAt {
+                    block_id,
+                    contract_address,
+                } => {
+                    let contract_address =
+                        ContractAddress::new(*contract_address).expect("Should always work");
+
+                    let class_hash = starknet
+                        .get_class_hash_at(&block_id, contract_address)
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    Ok(Outcome::Node(NodeOutcome::GetClassHashAt(class_hash)))
+                }
+                NodeInstruction::GetClassAt {
+                    block_id,
+                    contract_address,
+                } => {
+                    let contract_address =
+                        ContractAddress::new(*contract_address).expect("Should always work");
+
+                    let contract_class = starknet
+                        .get_class_at(&block_id, contract_address)
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    Ok(Outcome::Node(NodeOutcome::GetClassAt(
+                        contract_class
+                            .try_into()
+                            .map_err(|e: Error| ArbiterCoreError::InternalError(e.to_string()))?,
+                    )))
+                }
+                NodeInstruction::GetBlockTransactionCount { block_id } => {
+                    let count = starknet
+                        .get_block_txs_count(&block_id)
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    Ok(Outcome::Node(NodeOutcome::GetBlockTransactionCount(count)))
+                }
+                NodeInstruction::BlockNumber => {
+                    let block = starknet
+                        .get_latest_block()
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    Ok(Outcome::Node(NodeOutcome::BlockNumber(
+                        block.block_number().0,
+                    )))
+                }
+                NodeInstruction::BlockHashAndNumber => {
+                    let block = starknet
+                        .get_latest_block()
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    Ok(Outcome::Node(NodeOutcome::BlockHashAndNumber(
+                        core_types::BlockHashAndNumber {
+                            block_hash: block.block_hash(),
+                            block_number: block.block_number().0,
+                        },
+                    )))
+                }
+                NodeInstruction::ChainId => {
+                    let chain_id = starknet.config.chain_id;
+                    Ok(Outcome::Node(NodeOutcome::ChainId(chain_id.into())))
+                }
+                NodeInstruction::Syncing => Ok(Outcome::Node(NodeOutcome::Syncing(
+                    core_types::SyncStatusType::NotSyncing,
+                ))),
+                NodeInstruction::GetEvents {
+                    filter,
+                    continuation_token,
+                    chunk_size,
+                } => {
+                    let skip = if let Some(s) = continuation_token {
+                        s.parse::<u64>()
+                            .expect("Continuation token should be a valid u64")
+                    } else {
+                        0
+                    };
+
+                    let chunk_size: usize = if let Some(size) = chunk_size {
+                        *size as usize
+                    } else {
+                        50_usize // TODO: Default chunk size. Move to config
+                    };
+
+                    let (events, has_filtered_events) = starknet
+                        .get_events(
+                            filter.from_block,
+                            filter.to_block,
+                            match filter.address {
+                                Some(address) => {
+                                    Some(ContractAddress::new(address).expect("Should always work"))
+                                }
+                                None => None,
+                            },
+                            filter.keys.clone(),
+                            skip.try_into().expect("Skip should be a valid usize"),
+                            Some(chunk_size),
+                        )
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    let continuation_token = if events.len() < chunk_size {
+                        Option::None
+                    } else {
+                        Option::Some(format!("{}", skip + events.len() as u64))
+                    };
+
+                    let page = core_types::EventsPage {
+                        events: events.iter().map(|e| e.into()).collect(),
+                        continuation_token,
+                    };
+
+                    Ok(Outcome::Node(NodeOutcome::GetEvents(page)))
+                }
+                NodeInstruction::Call { request, block_id } => {
+                    trace!(
+                        "Environment. Received Call instruction: {:?} {:?}",
+                        request,
+                        block_id
+                    );
+
+                    let res = starknet
+                        .call(
+                            block_id,
+                            request.contract_address,
+                            request.entry_point_selector,
+                            request.calldata.clone(),
+                        )
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    trace!("Environment. Call result: {:?} ", res);
+
+                    Ok(Outcome::Node(NodeOutcome::Call(res)))
+                }
+                NodeInstruction::AddInvokeTransaction { transaction } => {
+                    let tx_hash = starknet
+                        .add_invoke_transaction(BroadcastedInvokeTransaction::V3(
+                            transaction.clone().into(),
+                        ))
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    Ok(Outcome::Node(NodeOutcome::AddInvokeTransaction(
+                        core_types::InvokeTransactionResult {
+                            transaction_hash: tx_hash,
+                        },
+                    )))
+                }
+                NodeInstruction::AddDeclareTransaction { transaction } => {
+                    let (tx_hash, class_hash) = starknet
+                        .add_declare_transaction(BroadcastedDeclareTransaction::V3(Box::new(
+                            transaction.clone().into(),
+                        )))
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    Ok(Outcome::Node(NodeOutcome::AddDeclareTransaction(
+                        core_types::DeclareTransactionResult {
+                            transaction_hash: tx_hash,
+                            class_hash,
+                        },
+                    )))
+                }
+                NodeInstruction::AddDeployAccountTransaction { transaction } => {
+                    let (tx_hash, contract_address) = starknet
+                        .add_deploy_account_transaction(BroadcastedDeployAccountTransaction::V3(
+                            transaction.clone().into(),
+                        ))
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    Ok(Outcome::Node(NodeOutcome::AddDeployAccountTransaction(
+                        core_types::DeployAccountTransactionResult {
+                            transaction_hash: tx_hash,
+                            contract_address: core_types::Felt::from(contract_address),
+                        },
+                    )))
+                }
+                NodeInstruction::TraceTransaction { transaction_hash } => {
+                    let trace = starknet
+                        .get_transaction_trace_by_hash(*transaction_hash)
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    Ok(Outcome::Node(NodeOutcome::TraceTransaction(trace.into())))
+                }
+                NodeInstruction::SimulateTransactions {
+                    block_id,
+                    transactions,
+                    simulation_flags,
+                } => {
+                    let res = starknet
+                        .simulate_transactions(
+                            &block_id,
+                            transactions
+                                .iter()
+                                .cloned()
+                                .map(Into::into)
+                                .collect::<Vec<BroadcastedTransaction>>()
+                                .as_slice(),
+                            simulation_flags.iter().cloned().map(Into::into).collect(),
+                        )
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+                    Ok(Outcome::Node(NodeOutcome::SimulateTransactions(
+                        res.iter().cloned().map(Into::into).collect(),
+                    )))
+                }
+                NodeInstruction::TraceBlockTransactions { block_id } => {
+                    let res = starknet
+                        .get_transaction_traces_from_block(&block_id)
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    Ok(Outcome::Node(NodeOutcome::TraceBlockTransactions(
+                        res.iter().cloned().map(Into::into).collect(),
+                    )))
+                }
+                NodeInstruction::EstimateFee {
+                    request,
+                    simulate_flags,
+                    block_id,
+                } => {
+                    let txs = &[BroadcastedTransaction::from(request.clone())];
+
+                    // NOTE: good example of From trait superiority
+                    let simulation_flags = &[SimulationFlag::from(*simulate_flags)];
+
+                    let fees = starknet
+                        .estimate_fee(&block_id, txs, simulation_flags)
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    Ok(Outcome::Node(NodeOutcome::EstimateFee(
+                        fees.iter().cloned().map(Into::into).collect(),
+                    )))
+                }
+                NodeInstruction::EstimateMessageFee { message, block_id } => {
+                    let fee = starknet
+                        .estimate_message_fee(&block_id, message.clone())
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    Ok(Outcome::Node(NodeOutcome::EstimateMessageFee(fee.into())))
+                }
+                NodeInstruction::GetNonce {
+                    block_id,
+                    contract_address,
+                } => {
+                    let contract_address =
+                        ContractAddress::new(*contract_address).expect("Should always work.");
+
+                    let nonce = starknet
+                        .contract_nonce_at_block(&block_id, contract_address)
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    Ok(Outcome::Node(NodeOutcome::GetNonce(nonce.into())))
+                }
+            },
+            Instruction::Cheat(ref cheat_instruction) => match cheat_instruction {
+                instruction::CheatInstruction::CreateAccount {
+                    public_key,
+                    class_hash,
+                } => {
+                    let mut state = starknet.get_state();
+
+                    // TODO: check or predeclare?
+
+                    let deployer =
+                        api_core::ContractAddress::try_from(core_types::Felt::from(0_u32))
+                            .map_err(|e| ArbiterCoreError::DevnetError(e.into()))?;
+
+                    let class_hash = api_core::ClassHash(*class_hash);
+
+                    let account_address = api_core::calculate_contract_address(
+                        ContractAddressSalt(core_types::Felt::from(20_u32)), // TODO: rethink
+                        class_hash,
+                        &Calldata(Arc::new(vec![public_key.scalar()])),
+                        deployer,
+                    )
+                    .map_err(|e| ArbiterCoreError::DevnetError(e.into()))?;
+
+                    trace!(
+                        "Create account. Address: {:?}, Class Hash: {:?}",
+                        account_address,
+                        class_hash
+                    );
+
+                    // Predeploy the declared contract.
+                    // state
+                    //     .set_class_hash_at(account_address, class_hash)
+                    //     .map_err(|e| ArbiterCoreError::DevnetError(e.into()))?;
+
+                    trace!("Class hash set. Minting tokens...");
+
+                    utils::mint_tokens_in_erc20_contract(
+                        &mut state,
+                        devnet_constants::STRK_ERC20_CONTRACT_ADDRESS,
+                        account_address.into(),
+                        BigUint::from(100000_u128),
+                    )?;
+
+                    // utils::simulate_constructor(
+                    //     state,
+                    //     account_address,
+                    //     public_key.scalar(),
+                    // )?;
+
+                    starknet.commit_diff()?;
+
+                    Ok(Outcome::Cheat(
+                        instruction::CheatcodesReturn::CreateAccount(account_address),
+                    ))
+                }
+                instruction::CheatInstruction::CreateBlock => {
+                    starknet
+                        .create_block()
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    Ok(Outcome::Cheat(instruction::CheatcodesReturn::CreateBlock))
+                }
+            },
+            Instruction::System => todo!(),
+        };
+
+        sender
+            .send(result)
+            .map_err(|_| ArbiterCoreError::SendError(crossbeam_channel::SendError(instruction)))?
+    }
+    Ok(())
 }

@@ -19,13 +19,12 @@
 
 use std::{env, fs, path::Path};
 
-use clap::{command, Parser, Subcommand};
+use clap::{command, CommandFactory, Parser, Subcommand};
 use config::{Config, ConfigError};
 use serde::Deserialize;
 use thiserror::Error;
 
 mod bind;
-mod fork;
 
 /// Represents command-line arguments passed to the `Arbiter` tool.
 #[derive(Parser)]
@@ -70,14 +69,15 @@ pub enum ArbiterError {
 #[derive(Subcommand)]
 enum Commands {
     /// Represents the `Bind` subcommand.
-    Bind, // Represents the `Fork` subcommand.
-          // Fork {
-          //     /// The name of the config file used to configure the fork.
-          //     #[clap(index = 1)]
-          //     fork_config_path: String,
-          //     #[clap(long)]
-          //     overwrite: bool,
-          // },
+    Bind,
+    // Represents the `Fork` subcommand.
+    Fork {
+        /// The name of the config file used to configure the fork.
+        #[clap(index = 1)]
+        fork_config_path: String,
+        #[clap(long)]
+        overwrite: bool,
+    },
 }
 
 /// The main entry point for the `Arbiter` tool.
@@ -94,18 +94,19 @@ fn main() -> Result<(), ArbiterError> {
 
     match &args.command {
         Some(Commands::Bind) => {
-            println!("Generating bindings...");
+            // println!("Generating bindings...");
             bind::forge_bind()?;
         }
-        None => todo!(), // Some(Commands::Fork {
-                         //     fork_config_path,
-                         //     overwrite,
-                         // }) => {
-                         //     println!("Forking...");
-                         //     let fork_config = ForkConfig::new(fork_config_path)?;
-                         //     // fork_config.write_to_disk(overwrite)?;
-                         // }
-                         // None => Args::command().print_long_help()?,
+        None => todo!(),
+        Some(Commands::Fork {
+            fork_config_path,
+            overwrite,
+        }) => {
+            println!("Forking...");
+            // let fork_config = ForkConfig::new(fork_config_path)?;
+            // fork_config.write_to_disk(overwrite)?;
+        }
+        None => Args::command().print_long_help()?,
     }
 
     Ok(())

@@ -1,8 +1,14 @@
 //! Messengers/connections to the underlying EVM in the environment.
 use std::sync::Weak;
 
-use async_trait::async_trait;
-use starknet_devnet_types::starknet_api::core::ContractAddress;
+use async_trait;
+use starknet::providers::{Provider, ProviderError};
+
+use starknet_core::types::{self as core_types, EventFilter};
+
+use starknet_devnet_types::{
+    contract_address::ContractAddress as DevnetContractAddress, num_bigint::BigUint,
+};
 
 use super::*;
 use crate::environment::{InstructionSender, OutcomeReceiver, OutcomeSender};
@@ -82,16 +88,37 @@ impl Connection {
     }
 }
 
-// Cheating
-impl Connection {
-    pub async fn create_account(
+#[async_trait::async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
+impl CheatingProvider for Connection {
+    async fn create_block(&self) -> Result<(), ProviderError> {
+        let to_send = Instruction::Cheat(CheatInstruction::CreateBlock {});
+
+        let res = self.send_instruction_recv_outcome(to_send).await?;
+
+        if let Outcome::Cheat(CheatcodesReturn::CreateBlock) = res {
+            Ok(())
+        } else {
+            Err(ProviderError::RateLimited)
+        }
+    }
+
+    async fn create_account<V, F, I>(
         &self,
-        public_key: VerifyingKey,
-        class_hash: Felt,
-    ) -> Result<ContractAddress, ProviderError> {
+        public_key: V,
+        class_hash: F,
+        prefunded_balance: I,
+    ) -> Result<Felt, ProviderError>
+    where
+        V: Into<VerifyingKey> + Send + Sync, // change for Into
+        F: Into<Felt> + Send + Sync,
+        I: Into<BigUint> + Send + Sync,
+    {
         let to_send = Instruction::Cheat(CheatInstruction::CreateAccount {
-            public_key,
-            class_hash,
+            public_key: public_key.into(),
+            class_hash: class_hash.into(),
+            prefunded_balance: prefunded_balance.into(),
         });
 
         let res = self.send_instruction_recv_outcome(to_send).await?;
@@ -103,12 +130,60 @@ impl Connection {
         }
     }
 
-    pub async fn create_block(&self) -> Result<(), ProviderError> {
-        let to_send = Instruction::Cheat(CheatInstruction::CreateBlock);
+    async fn top_up_balance<C, B, T>(
+        &self,
+        receiver: C,
+        amount: B,
+        token: T,
+    ) -> Result<(), ProviderError>
+    where
+        C: Into<Felt> + Send + Sync,
+        B: Into<BigUint> + Send + Sync,
+        T: Into<String> + Send + Sync,
+    {
+        let to_send = Instruction::Cheat(CheatInstruction::TopUpBalance {
+            receiver: receiver.into(),
+            amount: amount.into(),
+            token: token.into(),
+        });
 
         let res = self.send_instruction_recv_outcome(to_send).await?;
 
-        if let Outcome::Cheat(CheatcodesReturn::CreateBlock) = res {
+        if let Outcome::Cheat(CheatcodesReturn::TopUpBalance) = res {
+            Ok(())
+        } else {
+            Err(ProviderError::RateLimited)
+        }
+    }
+
+    async fn impersonate<C>(&self, address: C) -> Result<(), ProviderError>
+    where
+        C: AsRef<Felt> + Send + Sync,
+    {
+        let to_send = Instruction::Cheat(CheatInstruction::Impersonate {
+            address: address.as_ref().clone(),
+        });
+
+        let res = self.send_instruction_recv_outcome(to_send).await?;
+
+        if let Outcome::Cheat(CheatcodesReturn::Impersonate) = res {
+            Ok(())
+        } else {
+            Err(ProviderError::RateLimited)
+        }
+    }
+
+    async fn stop_impersonating_account<C>(&self, address: C) -> Result<(), ProviderError>
+    where
+        C: AsRef<Felt> + Send + Sync,
+    {
+        let to_send = Instruction::Cheat(CheatInstruction::StopImpersonating {
+            address: address.as_ref().clone(),
+        });
+
+        let res = self.send_instruction_recv_outcome(to_send).await?;
+
+        if let Outcome::Cheat(CheatcodesReturn::StopImpersonating) = res {
             Ok(())
         } else {
             Err(ProviderError::RateLimited)
@@ -116,9 +191,9 @@ impl Connection {
     }
 }
 
-#[async_trait]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[async_trait::async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 impl Provider for Connection {
     async fn spec_version(&self) -> Result<String, ProviderError> {
         return Ok("devnet".to_string());

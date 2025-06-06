@@ -23,9 +23,9 @@ keywords = ["ethereum", "evm", "emulator", "testing", "smart-contracts"]
 name = "arbiter"
 path = "bin/main.rs"
 
-[[example]]
-name = "minter"
-path = "examples/minter/main.rs"
+# [[example]]
+# name = "minter"
+# path = "examples/minter/main.rs"
 
 [workspace.dependencies]
 # Arbiter local for development
@@ -33,6 +33,18 @@ arbiter-bindings = { path = "bindings" }
 arbiter-core = { path = "core" }
 arbiter-engine = { path = "engine" }
 arbiter-macros = { path = "macros" }
+
+starknet-devnet-core = { path = "/Users/baitcode/work/starknet/starknet-devnet/crates/starknet-devnet-core" }
+starknet-devnet-types = { path = "/Users/baitcode/work/starknet/starknet-devnet/crates/starknet-devnet-types" }
+
+# cainome = { version = "0.8.0", features = ["abigen-rs"] }
+cainome = { path = "/Users/baitcode/work/starknet/cainome", features = [
+    "abigen-rs",
+] }
+
+starknet = "=0.15.1"
+starknet-core = "=0.14.0"
+starknet-accounts = "=0.14.0"
 
 # Arbiter crates.io for release, these need to be used to do crate releases!
 # arbiter-bindings = "0.1.7"
@@ -64,6 +76,7 @@ anyhow = "1.0.83"
 # Dependencies for the release build of Arbiter bin
 [dependencies]
 arbiter-core.workspace = true
+cainome.workspace = true
 
 # Command line and config
 clap = { version = "4.5.2", features = ["derive"] }
@@ -84,10 +97,10 @@ thiserror.workspace = true
 # Dependencies for the test build and development
 [dev-dependencies]
 arbiter-bindings.workspace = true
-arbiter-core.workspace = true
 
 arbiter-engine.workspace = true
 arbiter-macros.workspace = true
+
 serde.workspace = true
 async-trait.workspace = true
 anyhow.workspace = true

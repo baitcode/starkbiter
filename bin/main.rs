@@ -30,7 +30,7 @@ mod bind;
 #[derive(Parser)]
 #[command(name = "Arbiter")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
-#[command(about = "Ethereum Virtual Machine Logic Simulator", long_about = None)]
+#[command(about = "Starknet Virtual Machine Logic Simulator", long_about = None)]
 #[command(author)]
 struct Args {
     /// Defines the subcommand to execute.
@@ -68,9 +68,19 @@ pub enum ArbiterError {
 /// Defines available subcommands for the `Arbiter` tool.
 #[derive(Subcommand)]
 enum Commands {
-    /// Represents the `Bind` subcommand.
-    Bind,
-    // Represents the `Fork` subcommand.
+    /// Reads compiled Sierra contract classes and generates rust bindings.
+    Bind {
+        /// The path to the directory with contracts or a specific contract file
+        #[clap(index = 1)]
+        contract_class_path: String,
+        /// The path to the output directory for generated bindings.
+        #[clap(index = 2)]
+        output_dir: String,
+        /// Add Debug to #[derive] macross.
+        #[clap(long)]
+        use_debug: bool,
+    },
+    // Does nothing really as forking is real time.
     Fork {
         /// The name of the config file used to configure the fork.
         #[clap(index = 1)]
@@ -93,18 +103,19 @@ fn main() -> Result<(), ArbiterError> {
     let args = Args::parse();
 
     match &args.command {
-        Some(Commands::Bind) => {
-            // println!("Generating bindings...");
-            bind::forge_bind()?;
+        Some(Commands::Bind {
+            contract_class_path,
+            output_dir,
+            use_debug,
+        }) => {
+            println!("Generating bindings from JSON...");
+            bind::cainome_bind(contract_class_path, output_dir, use_debug)?;
         }
-        None => todo!(),
         Some(Commands::Fork {
             fork_config_path,
             overwrite,
         }) => {
-            println!("Forking...");
-            // let fork_config = ForkConfig::new(fork_config_path)?;
-            // fork_config.write_to_disk(overwrite)?;
+            println!("Not Forking...");
         }
         None => Args::command().print_long_help()?,
     }

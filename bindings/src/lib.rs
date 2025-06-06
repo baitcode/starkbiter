@@ -1,11 +1,3 @@
-use cainome::rs::abigen;
-
-extern crate alloc;
-
-// abigen!(
-//     ERC20,
-//     "/Users/baitcode/work/starknet/starbiter/bindings/contracts/ERC20_Mintable_OZ_0.8.1.class.json"
-// );
-
-// pub mod counter;
-// pub mod user_values;
+pub mod contracts_counter;
+pub mod contracts_user_values;
+pub mod erc_20_mintable_oz0;

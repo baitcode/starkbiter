@@ -18,10 +18,7 @@
 
 use std::thread::{self, JoinHandle};
 
-mod constants;
-use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
-use polars::prelude::ArrayCollectIterExt;
-use starknet::contract;
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use starknet::providers::Url;
 use starknet_core::types::{self as core_types};
 use starknet_devnet_core::constants::{self as devnet_constants};
@@ -30,22 +27,19 @@ use starknet_devnet_core::error::Error as DevnetError;
 use starknet_devnet_core::starknet::starknet_config::ForkConfig;
 use starknet_devnet_core::{
     starknet::{starknet_config::StarknetConfig, Starknet},
-    state::{StarknetState, StateReader},
+    state::StateReader,
 };
 use starknet_devnet_types::error::Error;
-use starknet_devnet_types::rpc::transactions::broadcasted_invoke_transaction_v3::BroadcastedInvokeTransactionV3;
+use starknet_devnet_types::rpc::block::BlockResult;
 use starknet_devnet_types::rpc::transactions::{
     BroadcastedDeclareTransaction, BroadcastedDeployAccountTransaction,
-    BroadcastedInvokeTransaction, BroadcastedTransaction, SimulationFlag, TransactionTrace,
+    BroadcastedInvokeTransaction, BroadcastedTransaction, SimulationFlag,
 };
 use starknet_devnet_types::starknet_api::transaction::fields::{Calldata, ContractAddressSalt};
 use starknet_devnet_types::{contract_address::ContractAddress, num_bigint::BigUint};
 
-use starknet_devnet_core::state::State;
-use starknet_devnet_types::rpc::block::{self, BlockResult};
-
+use starknet_devnet_types::starknet_api::core as api_core;
 use starknet_devnet_types::starknet_api::state::StorageKey;
-use starknet_devnet_types::starknet_api::{core as api_core, transaction_hash};
 use tokio::sync::broadcast::channel;
 
 use super::*;
@@ -115,8 +109,13 @@ pub struct EnvironmentParameters {
     /// The contract size limit for the [`Environment`].
     pub contract_size_limit: Option<usize>,
 
+    /// The URL of JSON RPC node endpoing to fork the Starknet network from.
     pub starknet_fork_url: Option<String>,
+
+    /// The block number to fork the Starknet network from. Should be specified with starknet_fork_block_hash.
     pub starknet_fork_block_number: Option<u64>,
+
+    /// The block hash to fork the Starknet network from. Should be specified with starknet_fork_block_number.
     pub starknet_fork_block_hash: Option<core_types::Felt>,
 
     /// Enables inner contract logs to be printed to the console.
@@ -810,10 +809,9 @@ async fn process_instructions(
                 instruction::CheatInstruction::CreateAccount {
                     public_key,
                     class_hash,
+                    prefunded_balance,
                 } => {
                     let mut state = starknet.get_state();
-
-                    // TODO: check or predeclare?
 
                     let deployer =
                         api_core::ContractAddress::try_from(core_types::Felt::from(0_u32))
@@ -846,19 +844,15 @@ async fn process_instructions(
                         &mut state,
                         devnet_constants::STRK_ERC20_CONTRACT_ADDRESS,
                         account_address.into(),
-                        BigUint::from(100000_u128),
+                        prefunded_balance.clone(),
                     )?;
 
-                    // utils::simulate_constructor(
-                    //     state,
-                    //     account_address,
-                    //     public_key.scalar(),
-                    // )?;
+                    utils::simulate_constructor(state, account_address, public_key.scalar())?;
 
                     starknet.commit_diff()?;
 
                     Ok(Outcome::Cheat(
-                        instruction::CheatcodesReturn::CreateAccount(account_address),
+                        instruction::CheatcodesReturn::CreateAccount(account_address.into()),
                     ))
                 }
                 instruction::CheatInstruction::CreateBlock => {
@@ -867,6 +861,41 @@ async fn process_instructions(
                         .map_err(|e| ArbiterCoreError::DevnetError(e))?;
 
                     Ok(Outcome::Cheat(instruction::CheatcodesReturn::CreateBlock))
+                }
+                instruction::CheatInstruction::L1Message {
+                    l1_handler_transaction,
+                } => {
+                    let res = starknet
+                        .add_l1_handler_transaction(l1_handler_transaction.clone())
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+                    Ok(Outcome::Cheat(instruction::CheatcodesReturn::L1Message(
+                        res,
+                    )))
+                }
+                instruction::CheatInstruction::TopUpBalance {
+                    receiver,
+                    amount,
+                    token,
+                } => {
+                    //
+
+                    Ok(Outcome::Cheat(instruction::CheatcodesReturn::TopUpBalance))
+                }
+                instruction::CheatInstruction::Impersonate { address } => {
+                    starknet
+                        .impersonate_account(ContractAddress::new(address.clone()).unwrap())
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    Ok(Outcome::Cheat(instruction::CheatcodesReturn::Impersonate))
+                }
+                instruction::CheatInstruction::StopImpersonating { address } => {
+                    starknet.stop_impersonating_account(
+                        &ContractAddress::new(address.clone()).unwrap(),
+                    );
+
+                    Ok(Outcome::Cheat(
+                        instruction::CheatcodesReturn::StopImpersonating,
+                    ))
                 }
             },
             Instruction::System => todo!(),

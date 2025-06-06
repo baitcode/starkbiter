@@ -39,7 +39,7 @@ pub struct MintRequest {
     pub token: String,
 
     /// The address to mint to.
-    pub mint_to: eAddress,
+    pub mint_to: ContractAddress,
 
     /// The amount to mint.
     pub mint_amount: u64,

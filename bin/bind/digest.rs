@@ -1,3 +1,6 @@
+use config::{Config, ConfigError};
+use serde::Deserialize;
+
 use super::*;
 
 #[derive(Debug, Deserialize, serde::Serialize, Clone)]

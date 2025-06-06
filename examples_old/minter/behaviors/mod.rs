@@ -4,14 +4,13 @@ pub mod token_requester;
 use std::sync::Arc;
 
 use anyhow::Result;
-use arbiter_bindings::bindings::arbiter_token::ArbiterToken;
 use arbiter_core::middleware::ArbiterMiddleware;
 use arbiter_engine::{
     machine::{Behavior, ControlFlow, CreateStateMachine, Engine, EventStream, StateMachine},
     messager::{Message, Messager, To},
 };
 use arbiter_macros::Behaviors;
-use ethers::types::{Address as eAddress, U256 as eU256};
+use cainome::cairo_serde::ContractAddress;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, trace, warn};
 
@@ -26,5 +25,5 @@ pub struct TokenData {
     pub name: String,
     pub symbol: String,
     pub decimals: u8,
-    pub address: Option<eAddress>,
+    pub address: Option<ContractAddress>,
 }

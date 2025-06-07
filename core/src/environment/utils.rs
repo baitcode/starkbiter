@@ -47,13 +47,6 @@ pub fn mint_tokens_in_erc20_contract(
             .get_storage_at(address, high_key)
             .map_err(|e| ArbiterCoreError::DevnetError(DevnetError::BlockifierStateError(e)))?;
 
-        trace!(
-            "Reading {:?}. Values: low: {:?} high {:?}",
-            msg,
-            low_key,
-            high_key
-        );
-
         return Ok(join_felts(&high_val, &low_val));
     }
 
@@ -72,13 +65,6 @@ pub fn mint_tokens_in_erc20_contract(
             .map_err(|e| ArbiterCoreError::DevnetError(DevnetError::StarknetApiError(e)))?;
 
         let (high_val, low_val) = split_biguint(value);
-
-        trace!(
-            "Writing {:?}. Values: low: {:?} and high: {:?}.",
-            msg,
-            low_key,
-            high_key,
-        );
 
         state
             .state

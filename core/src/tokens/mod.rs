@@ -120,7 +120,7 @@ impl BridgedTokenDataStorage {
                     ._cache
                     .entry(*chain_id)
                     .or_insert_with(|| load_data(&MAINNET_JSON.to_string()));
-                tracing::debug!("{:?}", data.keys());
+
                 let key = String::from(token_id);
                 return data.get(&key);
             }

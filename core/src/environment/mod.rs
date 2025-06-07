@@ -29,6 +29,7 @@ use starknet_devnet_core::{
     starknet::{starknet_config::StarknetConfig, Starknet},
     state::StateReader,
 };
+use starknet_devnet_types::chain_id::ChainId;
 use starknet_devnet_types::error::Error;
 use starknet_devnet_types::rpc::block::BlockResult;
 use starknet_devnet_types::rpc::transactions::{
@@ -102,6 +103,8 @@ pub struct Environment {
 /// Parameters to create [`Environment`]s with different settings.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct EnvironmentParameters {
+    pub chain_id: Option<ChainId>,
+
     /// The label used to define the [`Environment`].
     pub label: Option<String>,
 
@@ -146,6 +149,11 @@ impl EnvironmentBuilder {
             // self.db,
         )
         .run()
+    }
+
+    pub fn with_chain_id(mut self, chain_id: ChainId) -> Self {
+        self.parameters.chain_id = Some(chain_id);
+        self
     }
 
     /// Sets the label for the [`Environment`].
@@ -251,6 +259,7 @@ impl Environment {
                     let starknet_config = &StarknetConfig {
                         fork_config,
                         // predeploy_erc20,
+                        chain_id: self.parameters.chain_id.unwrap_or(ChainId::Testnet),
                         ..StarknetConfig::default()
                     };
 
@@ -895,6 +904,8 @@ async fn process_instructions(
                         receiver.into(),
                         amount.clone(),
                     )?;
+
+                    starknet.commit_diff()?;
 
                     Ok(Outcome::Cheat(instruction::CheatcodesReturn::TopUpBalance))
                 }

@@ -15,10 +15,13 @@ mod cheating_provider;
 pub use cheating_provider::CheatingProvider;
 
 use async_trait;
-use starknet_devnet_types::{num_bigint::BigUint, starknet_api::core::ContractAddress};
+use starknet_devnet_types::num_bigint::BigUint;
 
 use super::*;
-use crate::environment::{instruction::*, Broadcast, Environment};
+use crate::{
+    environment::{instruction::*, Broadcast, Environment},
+    tokens::TokenId,
+};
 use starknet::{
     core::types::{BlockId, Felt},
     providers::{Provider, ProviderError, ProviderRequestData, ProviderResponseData},
@@ -135,7 +138,7 @@ impl CheatingProvider for ArbiterMiddleware {
     where
         C: Into<Felt> + Send + Sync,
         B: Into<BigUint> + Send + Sync,
-        T: Into<String> + Send + Sync,
+        T: Into<TokenId> + Send + Sync,
     {
         self.connection
             .top_up_balance(receiver, amount, token)
@@ -154,6 +157,20 @@ impl CheatingProvider for ArbiterMiddleware {
         C: AsRef<Felt> + Send + Sync,
     {
         self.connection.stop_impersonating_account(address).await
+    }
+
+    async fn set_storage_at<C, K, V>(
+        &self,
+        address: C,
+        key: K,
+        value: V,
+    ) -> Result<(), ProviderError>
+    where
+        C: AsRef<Felt> + Send + Sync,
+        K: AsRef<Felt> + Send + Sync,
+        V: AsRef<Felt> + Send + Sync,
+    {
+        self.connection.set_storage_at(address, key, value).await
     }
 }
 

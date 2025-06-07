@@ -38,9 +38,11 @@ use starknet_devnet_types::rpc::transactions::{
 use starknet_devnet_types::starknet_api::transaction::fields::{Calldata, ContractAddressSalt};
 use starknet_devnet_types::{contract_address::ContractAddress, num_bigint::BigUint};
 
-use starknet_devnet_types::starknet_api::core as api_core;
+use starknet_devnet_types::starknet_api::core::{self as api_core, PatriciaKey};
 use starknet_devnet_types::starknet_api::state::StorageKey;
 use tokio::sync::broadcast::channel;
+
+use crate::tokens::get_token_data;
 
 use super::*;
 
@@ -615,7 +617,7 @@ async fn process_instructions(
                     )))
                 }
                 NodeInstruction::ChainId => {
-                    let chain_id = starknet.config.chain_id;
+                    let chain_id = starknet_config.chain_id;
                     Ok(Outcome::Node(NodeOutcome::ChainId(chain_id.into())))
                 }
                 NodeInstruction::Syncing => Ok(Outcome::Node(NodeOutcome::Syncing(
@@ -877,7 +879,22 @@ async fn process_instructions(
                     amount,
                     token,
                 } => {
-                    //
+                    let mut state = starknet.get_state();
+
+                    let receiver = ContractAddress::new(receiver.clone())
+                        .map_err(|e| ArbiterCoreError::InternalError(e.to_string()))?;
+
+                    let token_data = get_token_data(&starknet_config.chain_id, token)
+                        .map_err(|e| ArbiterCoreError::InternalError(e.to_string()))?;
+
+                    // NOTE: this strategy might not work for all tokens. l2 message strategy should work.
+                    // But probably it's better to be implemented on higher level.
+                    utils::mint_tokens_in_erc20_contract(
+                        &mut state,
+                        token_data.l2_token_address,
+                        receiver.into(),
+                        amount.clone(),
+                    )?;
 
                     Ok(Outcome::Cheat(instruction::CheatcodesReturn::TopUpBalance))
                 }
@@ -896,6 +913,31 @@ async fn process_instructions(
                     Ok(Outcome::Cheat(
                         instruction::CheatcodesReturn::StopImpersonating,
                     ))
+                }
+                instruction::CheatInstruction::SetStorageAt {
+                    address,
+                    key,
+                    value,
+                } => {
+                    let state = starknet.get_state();
+
+                    let patricia_key = PatriciaKey::try_from(*address).map_err(|e| {
+                        ArbiterCoreError::DevnetError(DevnetError::StarknetApiError(e))
+                    })?;
+
+                    state
+                        .state
+                        .state
+                        .set_storage_at(
+                            api_core::ContractAddress(patricia_key),
+                            StorageKey::try_from(*key).unwrap(),
+                            *value,
+                        )
+                        .map_err(|e| {
+                            ArbiterCoreError::DevnetError(DevnetError::BlockifierStateError(e))
+                        })?;
+
+                    Ok(Outcome::Cheat(instruction::CheatcodesReturn::SetStorageAt))
                 }
             },
             Instruction::System => todo!(),

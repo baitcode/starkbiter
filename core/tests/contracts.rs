@@ -1,7 +1,9 @@
 use std::str::FromStr;
 
 use arbiter_bindings::erc_20_mintable_oz0::Erc20MintableOZ0;
+use arbiter_core::tokens::{get_token_data, TokenId};
 use cainome::cairo_serde::U256;
+use starknet_devnet_types::chain_id::ChainId;
 
 include!("common.rs");
 
@@ -54,4 +56,10 @@ async fn test_create_account_and_query_erc20_for_balance() {
         balance == U256::from_str("100000").unwrap(),
         "Balance shoyld be 100000",
     );
+}
+
+#[tokio::test]
+async fn test_token_data() {
+    let z = get_token_data(&ChainId::Mainnet, &TokenId::STRK).unwrap();
+    println!("{:?}", z);
 }

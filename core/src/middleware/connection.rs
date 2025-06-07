@@ -6,12 +6,13 @@ use starknet::providers::{Provider, ProviderError};
 
 use starknet_core::types::{self as core_types, EventFilter};
 
-use starknet_devnet_types::{
-    contract_address::ContractAddress as DevnetContractAddress, num_bigint::BigUint,
-};
+use starknet_devnet_types::num_bigint::BigUint;
 
 use super::*;
-use crate::environment::{InstructionSender, OutcomeReceiver, OutcomeSender};
+use crate::{
+    environment::{InstructionSender, OutcomeReceiver, OutcomeSender},
+    tokens::TokenId,
+};
 
 /// Represents a connection to the EVM contained in the corresponding
 /// [`Environment`].
@@ -139,7 +140,7 @@ impl CheatingProvider for Connection {
     where
         C: Into<Felt> + Send + Sync,
         B: Into<BigUint> + Send + Sync,
-        T: Into<String> + Send + Sync,
+        T: Into<TokenId> + Send + Sync,
     {
         let to_send = Instruction::Cheat(CheatInstruction::TopUpBalance {
             receiver: receiver.into(),
@@ -161,7 +162,7 @@ impl CheatingProvider for Connection {
         C: AsRef<Felt> + Send + Sync,
     {
         let to_send = Instruction::Cheat(CheatInstruction::Impersonate {
-            address: address.as_ref().clone(),
+            address: *address.as_ref(),
         });
 
         let res = self.send_instruction_recv_outcome(to_send).await?;
@@ -178,12 +179,38 @@ impl CheatingProvider for Connection {
         C: AsRef<Felt> + Send + Sync,
     {
         let to_send = Instruction::Cheat(CheatInstruction::StopImpersonating {
-            address: address.as_ref().clone(),
+            address: *address.as_ref(),
         });
 
         let res = self.send_instruction_recv_outcome(to_send).await?;
 
         if let Outcome::Cheat(CheatcodesReturn::StopImpersonating) = res {
+            Ok(())
+        } else {
+            Err(ProviderError::RateLimited)
+        }
+    }
+
+    async fn set_storage_at<C, K, V>(
+        &self,
+        address: C,
+        key: K,
+        value: V,
+    ) -> Result<(), ProviderError>
+    where
+        C: AsRef<Felt> + Send + Sync,
+        K: AsRef<Felt> + Send + Sync,
+        V: AsRef<Felt> + Send + Sync,
+    {
+        let to_send = Instruction::Cheat(CheatInstruction::SetStorageAt {
+            address: *address.as_ref(),
+            key: *key.as_ref(),
+            value: *value.as_ref(),
+        });
+
+        let res = self.send_instruction_recv_outcome(to_send).await?;
+
+        if let Outcome::Cheat(CheatcodesReturn::SetStorageAt) = res {
             Ok(())
         } else {
             Err(ProviderError::RateLimited)

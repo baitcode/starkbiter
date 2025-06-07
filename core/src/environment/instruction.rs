@@ -15,6 +15,8 @@ use starknet_devnet_types::{
     starknet_api::block::BlockNumber,
 };
 
+use crate::tokens::TokenId;
+
 use super::*;
 
 /// Instructions that can be sent to the [`Environment`] via the [`Socket`].
@@ -346,7 +348,7 @@ pub enum CheatInstruction {
         /// The amount to add.
         amount: BigUint,
         /// The token symbol or identifier.
-        token: String, // need to create classifier
+        token: TokenId, // need to create classifier
     },
 
     Impersonate {
@@ -357,6 +359,15 @@ pub enum CheatInstruction {
     StopImpersonating {
         /// The address to stop impersonating.
         address: Felt,
+    },
+
+    SetStorageAt {
+        /// The address of the contract.
+        address: Felt,
+        /// The key of the storage slot.
+        key: Felt,
+        /// The value to set in the storage slot.
+        value: Felt,
     },
 }
 
@@ -373,4 +384,5 @@ pub enum CheatcodesReturn {
     TopUpBalance,
     Impersonate,
     StopImpersonating,
+    SetStorageAt,
 }

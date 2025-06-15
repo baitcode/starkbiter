@@ -23,9 +23,9 @@ keywords = ["ethereum", "evm", "emulator", "testing", "smart-contracts"]
 name = "arbiter"
 path = "bin/main.rs"
 
-# [[example]]
-# name = "minter"
-# path = "examples/minter/main.rs"
+[[example]]
+name = "minter"
+path = "examples/minter/main.rs"
 
 [workspace.dependencies]
 # Arbiter local for development
@@ -34,17 +34,19 @@ arbiter-core = { path = "core" }
 arbiter-engine = { path = "engine" }
 arbiter-macros = { path = "macros" }
 
-starknet-devnet-core = { path = "/Users/baitcode/work/starknet/starknet-devnet/crates/starknet-devnet-core" }
-starknet-devnet-types = { path = "/Users/baitcode/work/starknet/starknet-devnet/crates/starknet-devnet-types" }
+# starknet-devnet-core = { path = "/Users/baitcode/work/starknet/starknet-devnet/crates/starknet-devnet-core" }
+starknet-devnet-core = { git = "https://github.com/baitcode/starknet-devnet.git", branch = "experiment" }
+starknet-devnet-types = { git = "https://github.com/baitcode/starknet-devnet.git", branch = "experiment" }
+starknet_api = "=0.14.0-rc.3"
 
-# cainome = { version = "0.8.0", features = ["abigen-rs"] }
-cainome = { path = "/Users/baitcode/work/starknet/cainome", features = [
+cainome = { git = "https://github.com:baitcode/cainome.git", branch = "bugfix-event-conflicts", features = [
     "abigen-rs",
 ] }
 
 starknet = "=0.15.1"
 starknet-core = "=0.14.0"
 starknet-accounts = "=0.14.0"
+starknet-signers = "=0.12.0"
 
 # Arbiter crates.io for release, these need to be used to do crate releases!
 # arbiter-bindings = "0.1.7"
@@ -75,8 +77,17 @@ anyhow = "1.0.83"
 
 # Dependencies for the release build of Arbiter bin
 [dependencies]
+
 arbiter-core.workspace = true
+
+starknet-accounts.workspace = true
+starknet-signers.workspace = true
+starknet-devnet-core.workspace = true
+starknet-devnet-types.workspace = true
+starknet_api.workspace = true
+
 cainome.workspace = true
+futures.workspace = true
 
 # Command line and config
 clap = { version = "4.5.2", features = ["derive"] }
@@ -97,13 +108,13 @@ thiserror.workspace = true
 # Dependencies for the test build and development
 [dev-dependencies]
 arbiter-bindings.workspace = true
-
 arbiter-engine.workspace = true
 arbiter-macros.workspace = true
-
+starknet-core.workspace = true
 serde.workspace = true
 async-trait.workspace = true
 anyhow.workspace = true
+
 rayon = { version = "1.10.0" }
 
 # Necessary for examples

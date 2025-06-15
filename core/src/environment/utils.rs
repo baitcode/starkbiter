@@ -15,7 +15,6 @@ use starknet_devnet_types::{
     rpc::felt::split_biguint,
     starknet_api::{core::ContractAddress, state::StorageKey},
 };
-use tracing::trace;
 
 pub fn mint_tokens_in_erc20_contract(
     state: &mut StarknetState,
@@ -27,7 +26,6 @@ pub fn mint_tokens_in_erc20_contract(
         .map_err(|e| ArbiterCoreError::DevnetError(DevnetError::StarknetApiError(e)))?;
 
     fn read_biguint(
-        msg: String,
         state: &StarknetState,
         address: ContractAddress,
         low_key: Felt,
@@ -51,7 +49,6 @@ pub fn mint_tokens_in_erc20_contract(
     }
 
     fn write_biguint(
-        msg: String,
         state: &mut StarknetState,
         address: ContractAddress,
         low_key: Felt,
@@ -84,25 +81,14 @@ pub fn mint_tokens_in_erc20_contract(
     let recepient_balance_key = get_storage_var_address("ERC20_balances", &[recipient])
         .map_err(|e| ArbiterCoreError::InternalError(e.to_string()))?;
 
-    let recepient_balance = read_biguint(
-        "recepient_balance".to_string(),
-        &state,
-        contract_address,
-        recepient_balance_key,
-    )?;
+    let recepient_balance = read_biguint(&state, contract_address, recepient_balance_key)?;
 
     let total_supply_key = get_storage_var_address("ERC20_total_supply", &[])
         .map_err(|e| ArbiterCoreError::InternalError(e.to_string()))?;
 
-    let total_supply = read_biguint(
-        "total_supply".to_string(),
-        &state,
-        contract_address,
-        total_supply_key,
-    )?;
+    let total_supply = read_biguint(&state, contract_address, total_supply_key)?;
 
     write_biguint(
-        "recepient_balance".to_string(),
         state,
         contract_address,
         recepient_balance_key,
@@ -110,7 +96,6 @@ pub fn mint_tokens_in_erc20_contract(
     )?;
 
     write_biguint(
-        "total_supply".to_string(),
         state,
         contract_address,
         total_supply_key,

@@ -7,9 +7,7 @@ use starknet::{
     providers::{Provider, ProviderError},
     signers::{LocalWallet, Signer, SigningKey},
 };
-use starknet_accounts::{
-    Account, AccountError, ConnectedAccount, ExecutionEncoding, SingleOwnerAccount,
-};
+use starknet_accounts::{AccountError, ConnectedAccount, ExecutionEncoding};
 use starknet_core::{
     chain_id::MAINNET,
     types::{BlockId, BlockTag, Felt, FunctionCall},

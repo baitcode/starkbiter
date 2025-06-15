@@ -1,9 +1,11 @@
-use anyhow::{anyhow, Context, Error, Result};
-use hashbrown::HashMap;
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use starknet_core::types::Felt;
 use starknet_devnet_types::chain_id::ChainId;
-use std::sync::{Mutex, OnceLock};
+use std::{
+    collections::HashMap,
+    sync::{Mutex, OnceLock},
+};
 
 static MAINNET_JSON: &str = include_str!("./assets/mainnet.json");
 static SEPOLIA_JSON: &str = include_str!("./assets/sepolia.json");

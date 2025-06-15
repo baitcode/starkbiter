@@ -23,51 +23,37 @@ starknet.workspace = true
 starknet-core.workspace = true
 starknet-accounts.workspace = true
 
-starknet-types-core = "0.1.5"
 starknet-devnet-core.workspace = true
 starknet-devnet-types.workspace = true
-sha2 = { version = "0.10.7" }
-
-anyhow = "1.0.98"
+starknet_api.workspace = true
 
 # Serialization
 serde.workspace = true
 serde_json.workspace = true
 
-# Types
-bytes = { version = "^1.5.0" }
-hex = { version = "^0.4.3", default-features = false }
-hashbrown = "^0.14.5"
-uint = "^0.9.5"
-
 # Concurrency/async
 tokio.workspace = true
-futures-util.workspace = true
 async-trait.workspace = true
 async-stream.workspace = true
 crossbeam-channel.workspace = true
-futures-timer = { version = ">=3.0.2, <4.0.0" }
-futures-locks = { version = "=0.7.1" }
+
+futures.workspace = true
+futures-timer = { version = ">=3.0.2, <4.0.0" } # TODO: move to workspace
+futures-locks = { version = "=0.7.1" }          # TODO: move to workspace
 auto_impl = "1.3.0"
-# Randomness
-rand = { version = "=0.8.5" }
 
 # Errors
+anyhow.workspace = true
 thiserror.workspace = true
 
 # Logging
 tracing.workspace = true
-
-# File types
-polars = { version = "0.38.3", features = ["parquet", "csv", "json"] }
 
 # Dependencies for the test build and development
 [dev-dependencies]
 cainome.workspace = true
 arbiter-bindings.workspace = true
 tracing-subscriber = "0.3.18"
-futures.workspace = true
-
 
 # For bench
 cargo_metadata = "0.18.1"

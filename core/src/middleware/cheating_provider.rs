@@ -1,9 +1,16 @@
 use async_trait::async_trait;
 use auto_impl::auto_impl;
 
-use starknet::{providers::ProviderError, signers::VerifyingKey};
+use starknet::{
+    providers::ProviderError,
+    signers::{SigningKey, VerifyingKey},
+};
 use starknet_core::types::Felt;
-use starknet_devnet_types::num_bigint::BigUint;
+use starknet_devnet_types::{
+    felt::Calldata,
+    num_bigint::BigUint,
+    rpc::gas_modification::{GasModification, GasModificationRequest},
+};
 
 use crate::tokens::TokenId;
 
@@ -15,12 +22,12 @@ pub trait CheatingProvider {
 
     async fn create_account<V, F, I>(
         &self,
-        public_key: V,
+        signing_key: V,
         class_hash: F,
         prefunded_balance: I,
     ) -> Result<Felt, ProviderError>
     where
-        V: Into<VerifyingKey> + Send + Sync,
+        V: Into<SigningKey> + Send + Sync,
         F: Into<Felt> + Send + Sync,
         I: Into<BigUint> + Send + Sync;
 
@@ -53,4 +60,19 @@ pub trait CheatingProvider {
         C: AsRef<Felt> + Send + Sync,
         K: AsRef<Felt> + Send + Sync,
         V: AsRef<Felt> + Send + Sync;
+
+    async fn declare_contract<S>(&self, sierra_json: S) -> Result<Felt, ProviderError>
+    where
+        S: Into<String> + Send + Sync;
+
+    async fn set_next_block_gas<G>(
+        &self,
+        gas_modification_request: G,
+    ) -> Result<GasModification, ProviderError>
+    where
+        G: Into<GasModificationRequest> + Send + Sync;
+
+    async fn get_deployed_contract_address<F>(&self, tx_hash: F) -> Result<Felt, ProviderError>
+    where
+        F: Into<Felt> + Send + Sync;
 }

@@ -2,14 +2,17 @@
 //! communicate instructions and their outcomes between the
 //! [`middleware::ArbiterMiddleware`] and the [`Environment`].
 
-use starknet::{core::types::Felt, signers::VerifyingKey};
+use starknet::{
+    core::types::Felt,
+    signers::{SigningKey, VerifyingKey},
+};
 
 use starknet_core::types as core_types;
 use starknet_devnet_types::{
-    felt::TransactionHash,
+    felt::{Calldata, TransactionHash},
     num_bigint::BigUint,
     rpc::{
-        contract_address::ContractAddress, transaction_receipt::TransactionReceipt,
+        gas_modification::GasModification, transaction_receipt::TransactionReceipt,
         transactions::l1_handler_transaction::L1HandlerTransaction,
     },
     starknet_api::block::BlockNumber,
@@ -125,7 +128,7 @@ pub enum NodeInstruction {
         /// The transaction to estimate the fee for.
         request: core_types::BroadcastedTransaction,
         /// Simulation flags for fee estimation.
-        simulate_flags: core_types::SimulationFlagForEstimateFee,
+        simulate_flags: Vec<core_types::SimulationFlagForEstimateFee>,
         /// The identifier of the block.
         block_id: core_types::BlockId,
     },
@@ -326,10 +329,16 @@ pub struct ReceiptData {
 /// Cheat instructions that can be sent to the [`Environment`] via the [`Socket`].
 #[derive(Debug, Clone)]
 pub enum CheatInstruction {
+    DeclareContract {
+        /// The class hash of the contract to declare.
+        // class_hash: Felt,
+        /// The compiled Sierra JSON of the contract.
+        sierra_json: String,
+    },
     /// Creates a new account.
     CreateAccount {
         /// The public key for the new account.
-        public_key: VerifyingKey,
+        signing_key: SigningKey,
         /// The class hash for the new account.
         class_hash: Felt,
         /// The prefunded balance for the new account.
@@ -369,11 +378,20 @@ pub enum CheatInstruction {
         /// The value to set in the storage slot.
         value: Felt,
     },
+
+    SetNextBlockGas {
+        gas_modification: GasModificationRequest,
+    },
+
+    GetDeployedContractAddress {
+        tx_hash: Felt,
+    },
 }
 
 /// Return values of applying cheatcodes.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CheatcodesReturn {
+    DeclareContract(Felt),
     /// Returns the contract address of the created account.
     CreateAccount(Felt),
     /// Indicates a block was created.
@@ -385,4 +403,7 @@ pub enum CheatcodesReturn {
     Impersonate,
     StopImpersonating,
     SetStorageAt,
+    SetNextBlockGas(GasModification),
+
+    GetDeployedContractAddress(Felt),
 }

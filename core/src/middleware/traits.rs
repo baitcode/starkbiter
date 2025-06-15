@@ -1,142 +1,42 @@
-//! The [`middleware`] module provides functionality to interact with
-//! Ethereum-like virtual machines. It achieves this by offering a middleware
-//! implementation for sending and reading transactions, as well as watching
-//! for events.
+//! The [`traits`] module defines the [`Middleware`] trait, that allows for
+//! wrapping [`Connection`] decorating it with additional functionality.
+//!
 //!
 //! Main components:
-//! - [`ArbiterMiddleware`]: The core middleware implementation.
-//! - [`Connection`]: Handles communication with the Ethereum VM.
-//! - [`FilterReceiver`]: Facilitates event watching based on certain filters.
-
-#![warn(missing_docs)]
-
-pub mod traits;
-
-mod cheating_provider;
-use std::pin::Pin;
-
-pub use cheating_provider::CheatingProvider;
-
+//! - [`Middleware`]: The trait that defines the interface for middleware implementations.
+//!
 use async_trait;
-use futures::{stream, Stream, StreamExt};
-use starknet_accounts::{ExecutionEncoding, SingleOwnerAccount};
-use starknet_devnet_types::{
-    felt::Calldata,
-    num_bigint::BigUint,
-    rpc::gas_modification::{GasModification, GasModificationRequest},
-};
+use starknet_accounts::SingleOwnerAccount;
+use starknet_devnet_types::num_bigint::BigUint;
 
 use super::*;
-use crate::{
-    environment::{instruction::*, Environment},
-    middleware::traits::Middleware,
-    tokens::TokenId,
-};
+use crate::tokens::TokenId;
 use starknet::{
     core::types::{BlockId, Felt},
-    providers::{Provider, ProviderError, ProviderRequestData, ProviderResponseData},
+    providers::{ProviderError, ProviderRequestData, ProviderResponseData},
     signers::{LocalWallet, SigningKey},
 };
-
-pub mod connection;
-use connection::*;
-
-use starknet_core::types::{self as core_types, EmittedEvent};
-
-/// A middleware structure that integrates with `revm`.
-///
-/// [`ArbiterMiddleware`] serves as a bridge between the application and
-/// [`revm`]'s execution environment, allowing for transaction sending, call
-/// execution, and other core functions. It uses a custom connection and error
-/// system tailored to Revm's specific needs.
-///
-/// This allows for [`revm`] and the [`Environment`] built around it to be
-/// treated in much the same way as a live EVM blockchain can be addressed.
-///
-/// # Examples
-///
-/// Basic usage:
-/// ```
-/// use arbiter_core::{environment::Environment, middleware::ArbiterMiddleware};
-///
-/// // Create a new environment and run it
-/// let mut environment = Environment::builder().build();
-///
-/// // Retrieve the environment to create a new middleware instance
-/// let middleware = ArbiterMiddleware::new(&environment, Some("test_label"));
-/// ```
-/// The client can now be used for transactions with the environment.
-/// Use a seed like `Some("test_label")` for maintaining a
-/// consistent address across simulations and client labeling. Seeding is be
-/// useful for debugging and post-processing.
-#[derive(Debug)]
-pub struct ArbiterMiddleware {
-    connection: Connection,
-
-    #[allow(unused)]
-    pub label: Option<String>,
-}
-
-impl ArbiterMiddleware {
-    /// Creates a new instance of [`ArbiterMiddleware`].
-    pub fn new(
-        environment: &Environment,
-        seed_and_label: Option<&str>,
-    ) -> Result<Arc<Self>, ArbiterCoreError> {
-        let connection = Connection::from(environment);
-
-        info!(
-            "Created new `ArbiterMiddleware` instance from a fork -- attached to environment labeled: {:?}",
-            environment.parameters.label
-        );
-        Ok(Arc::new(Self {
-            connection,
-            label: seed_and_label.map(|s| s.to_string()),
-        }))
-    }
-
-    pub async fn subscribe_to<T>(&self) -> Pin<Box<dyn Stream<Item = Vec<T>> + Send + Sync>>
-    where
-        T: for<'a> TryFrom<&'a EmittedEvent> + Send + Sync,
-    {
-        return self.connection.subscribe_to().await;
-    }
-
-    pub async fn subscribe_to_flatten<T>(&self) -> Pin<Box<dyn Stream<Item = T> + Send + Sync>>
-    where
-        T: for<'a> TryFrom<&'a EmittedEvent> + Send + Sync + 'static,
-    {
-        let z = self.connection.subscribe_to().await;
-        let x = z.flat_map(|v| stream::iter(v));
-        return Box::pin(x) as Pin<Box<dyn Stream<Item = T> + Send + Sync + 'static>>;
-    }
-}
+use starknet_core::types::{self as core_types};
 
 #[async_trait::async_trait]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-impl Middleware for ArbiterMiddleware {
-    type Inner = Self;
+pub trait Middleware {
+    type Inner: Middleware + Send + Sync;
 
-    fn inner(&self) -> &Self::Inner {
-        &self
-    }
+    fn inner(&self) -> &Self::Inner;
 
-    fn connection(&self) -> &Connection {
-        &self.connection
-    }
+    fn connection(&self) -> &Connection;
 
     async fn create_block(&self) -> Result<(), ProviderError> {
-        self.connection().create_block().await
+        self.inner().create_block().await
     }
 
     async fn get_deployed_contract_address<F>(&self, tx_hash: F) -> Result<Felt, ProviderError>
     where
         F: Into<Felt> + Send + Sync,
     {
-        self.connection()
-            .get_deployed_contract_address(tx_hash)
-            .await
+        self.inner().get_deployed_contract_address(tx_hash).await
     }
 
     async fn create_account<V, F, I>(
@@ -150,9 +50,16 @@ impl Middleware for ArbiterMiddleware {
         F: Into<Felt> + Send + Sync,
         I: Into<BigUint> + Send + Sync,
     {
-        self.connection()
+        self.inner()
             .create_account(signing_key, class_hash, prefunded_balance)
             .await
+    }
+
+    async fn declare_contract<S>(&self, sierra_json: S) -> Result<Felt, ProviderError>
+    where
+        S: Into<String> + Send + Sync,
+    {
+        self.inner().declare_contract(sierra_json).await
     }
 
     async fn create_single_owner_account<S, F>(
@@ -165,31 +72,9 @@ impl Middleware for ArbiterMiddleware {
         S: Into<SigningKey> + Send + Sync,
         F: Into<Felt> + Send + Sync,
     {
-        let signing_key: SigningKey = if let Some(key) = signing_key {
-            key.into()
-        } else {
-            SigningKey::from_random()
-        };
-
-        trace!(
-            "Creating single owner account with signing key: {:?}.",
-            signing_key,
-        );
-
-        let address = self
-            .connection()
-            .create_account(signing_key.clone(), class_hash, prefunded_balance)
-            .await?;
-
-        let chain_id = self.connection.chain_id().await?;
-        let account = SingleOwnerAccount::new(
-            self.connection().clone(), // TODO: not thread safe
-            LocalWallet::from_signing_key(signing_key),
-            address.into(),
-            chain_id,
-            ExecutionEncoding::New,
-        );
-        Ok(account)
+        self.inner()
+            .create_single_owner_account(signing_key, class_hash, prefunded_balance)
+            .await
     }
 
     async fn top_up_balance<C, B, T>(
@@ -203,42 +88,21 @@ impl Middleware for ArbiterMiddleware {
         B: Into<BigUint> + Send + Sync,
         T: Into<TokenId> + Send + Sync,
     {
-        self.connection()
-            .top_up_balance(receiver, amount, token)
-            .await
-    }
-
-    async fn set_next_block_gas<G>(
-        &self,
-        gas_modification_request: G,
-    ) -> Result<GasModification, ProviderError>
-    where
-        G: Into<GasModificationRequest> + Send + Sync,
-    {
-        self.connection()
-            .set_next_block_gas(gas_modification_request)
-            .await
-    }
-
-    async fn declare_contract<S>(&self, sierra_json: S) -> Result<Felt, ProviderError>
-    where
-        S: Into<String> + Send + Sync,
-    {
-        self.connection().declare_contract(sierra_json).await
+        self.inner().top_up_balance(receiver, amount, token).await
     }
 
     async fn impersonate<C>(&self, address: C) -> Result<(), ProviderError>
     where
         C: AsRef<Felt> + Send + Sync,
     {
-        self.connection().impersonate(address).await
+        self.inner().impersonate(address).await
     }
 
     async fn stop_impersonating_account<C>(&self, address: C) -> Result<(), ProviderError>
     where
         C: AsRef<Felt> + Send + Sync,
     {
-        self.connection().stop_impersonating_account(address).await
+        self.inner().stop_impersonating_account(address).await
     }
 
     async fn set_storage_at<C, K, V>(
@@ -252,11 +116,11 @@ impl Middleware for ArbiterMiddleware {
         K: AsRef<Felt> + Send + Sync,
         V: AsRef<Felt> + Send + Sync,
     {
-        self.connection().set_storage_at(address, key, value).await
+        self.inner().set_storage_at(address, key, value).await
     }
 
     async fn spec_version(&self) -> Result<String, ProviderError> {
-        self.connection().spec_version().await
+        self.inner().spec_version().await
     }
 
     async fn get_block_with_tx_hashes<B>(
@@ -266,7 +130,19 @@ impl Middleware for ArbiterMiddleware {
     where
         B: AsRef<BlockId> + Send + Sync,
     {
-        self.connection.get_block_with_tx_hashes(block_id).await
+        self.inner().get_block_with_tx_hashes(block_id).await
+    }
+
+    async fn set_next_block_gas<G>(
+        &self,
+        gas_modification_request: G,
+    ) -> Result<GasModification, ProviderError>
+    where
+        G: Into<GasModificationRequest> + Send + Sync,
+    {
+        self.inner()
+            .set_next_block_gas(gas_modification_request)
+            .await
     }
 
     async fn get_block_with_txs<B>(
@@ -276,7 +152,7 @@ impl Middleware for ArbiterMiddleware {
     where
         B: AsRef<BlockId> + Send + Sync,
     {
-        self.connection().get_block_with_txs(block_id).await
+        self.inner().get_block_with_txs(block_id).await
     }
 
     async fn get_block_with_receipts<B>(
@@ -286,7 +162,7 @@ impl Middleware for ArbiterMiddleware {
     where
         B: AsRef<BlockId> + Send + Sync,
     {
-        self.connection().get_block_with_receipts(block_id).await
+        self.inner().get_block_with_receipts(block_id).await
     }
 
     async fn get_state_update<B>(
@@ -296,7 +172,7 @@ impl Middleware for ArbiterMiddleware {
     where
         B: AsRef<BlockId> + Send + Sync,
     {
-        self.connection().get_state_update(block_id).await
+        self.inner().get_state_update(block_id).await
     }
 
     async fn get_storage_at<A, K, B>(
@@ -310,7 +186,7 @@ impl Middleware for ArbiterMiddleware {
         K: AsRef<Felt> + Send + Sync,
         B: AsRef<BlockId> + Send + Sync,
     {
-        self.connection()
+        self.inner()
             .get_storage_at(contract_address, key, block_id)
             .await
     }
@@ -319,9 +195,7 @@ impl Middleware for ArbiterMiddleware {
         &self,
         transaction_hash: core_types::Hash256,
     ) -> Result<Vec<core_types::MessageWithStatus>, ProviderError> {
-        self.connection()
-            .get_messages_status(transaction_hash)
-            .await
+        self.inner().get_messages_status(transaction_hash).await
     }
 
     async fn get_transaction_status<H>(
@@ -331,9 +205,7 @@ impl Middleware for ArbiterMiddleware {
     where
         H: AsRef<Felt> + Send + Sync,
     {
-        self.connection()
-            .get_transaction_status(transaction_hash)
-            .await
+        self.inner().get_transaction_status(transaction_hash).await
     }
 
     async fn get_transaction_by_hash<H>(
@@ -343,9 +215,7 @@ impl Middleware for ArbiterMiddleware {
     where
         H: AsRef<Felt> + Send + Sync,
     {
-        self.connection()
-            .get_transaction_by_hash(transaction_hash)
-            .await
+        self.inner().get_transaction_by_hash(transaction_hash).await
     }
 
     async fn get_transaction_by_block_id_and_index<B>(
@@ -356,7 +226,7 @@ impl Middleware for ArbiterMiddleware {
     where
         B: AsRef<BlockId> + Send + Sync,
     {
-        self.connection()
+        self.inner()
             .get_transaction_by_block_id_and_index(block_id, index)
             .await
     }
@@ -368,9 +238,7 @@ impl Middleware for ArbiterMiddleware {
     where
         H: AsRef<Felt> + Send + Sync,
     {
-        self.connection()
-            .get_transaction_receipt(transaction_hash)
-            .await
+        self.inner().get_transaction_receipt(transaction_hash).await
     }
 
     async fn get_class<B, H>(
@@ -382,7 +250,7 @@ impl Middleware for ArbiterMiddleware {
         B: AsRef<BlockId> + Send + Sync,
         H: AsRef<Felt> + Send + Sync,
     {
-        self.connection().get_class(block_id, class_hash).await
+        self.inner().get_class(block_id, class_hash).await
     }
 
     async fn get_class_hash_at<B, A>(
@@ -394,7 +262,7 @@ impl Middleware for ArbiterMiddleware {
         B: AsRef<BlockId> + Send + Sync,
         A: AsRef<Felt> + Send + Sync,
     {
-        self.connection()
+        self.inner()
             .get_class_hash_at(block_id, contract_address)
             .await
     }
@@ -408,18 +276,14 @@ impl Middleware for ArbiterMiddleware {
         B: AsRef<BlockId> + Send + Sync,
         A: AsRef<Felt> + Send + Sync,
     {
-        self.connection()
-            .get_class_at(block_id, contract_address)
-            .await
+        self.inner().get_class_at(block_id, contract_address).await
     }
 
     async fn get_block_transaction_count<B>(&self, block_id: B) -> Result<u64, ProviderError>
     where
         B: AsRef<BlockId> + Send + Sync,
     {
-        self.connection()
-            .get_block_transaction_count(block_id)
-            .await
+        self.inner().get_block_transaction_count(block_id).await
     }
 
     async fn call<R, B>(&self, request: R, block_id: B) -> Result<Vec<Felt>, ProviderError>
@@ -427,7 +291,7 @@ impl Middleware for ArbiterMiddleware {
         R: AsRef<core_types::FunctionCall> + Send + Sync,
         B: AsRef<core_types::BlockId> + Send + Sync,
     {
-        self.connection().call(request, block_id).await
+        self.inner().call(request, block_id).await
     }
 
     async fn estimate_fee<R, S, B>(
@@ -441,7 +305,7 @@ impl Middleware for ArbiterMiddleware {
         S: AsRef<[core_types::SimulationFlagForEstimateFee]> + Send + Sync,
         B: AsRef<BlockId> + Send + Sync,
     {
-        self.connection()
+        self.inner()
             .estimate_fee(request, simulation_flags, block_id)
             .await
     }
@@ -455,25 +319,23 @@ impl Middleware for ArbiterMiddleware {
         M: AsRef<core_types::MsgFromL1> + Send + Sync,
         B: AsRef<BlockId> + Send + Sync,
     {
-        self.connection()
-            .estimate_message_fee(message, block_id)
-            .await
+        self.inner().estimate_message_fee(message, block_id).await
     }
 
     async fn block_number(&self) -> Result<u64, ProviderError> {
-        self.connection().block_number().await
+        self.inner().block_number().await
     }
 
     async fn block_hash_and_number(&self) -> Result<core_types::BlockHashAndNumber, ProviderError> {
-        self.connection().block_hash_and_number().await
+        self.inner().block_hash_and_number().await
     }
 
     async fn chain_id(&self) -> Result<Felt, ProviderError> {
-        self.connection().chain_id().await
+        self.inner().chain_id().await
     }
 
     async fn syncing(&self) -> Result<core_types::SyncStatusType, ProviderError> {
-        self.connection().syncing().await
+        self.inner().syncing().await
     }
 
     async fn get_events(
@@ -482,7 +344,7 @@ impl Middleware for ArbiterMiddleware {
         continuation_token: Option<String>,
         chunk_size: u64,
     ) -> Result<core_types::EventsPage, ProviderError> {
-        self.connection()
+        self.inner()
             .get_events(filter, continuation_token, chunk_size)
             .await
     }
@@ -492,9 +354,7 @@ impl Middleware for ArbiterMiddleware {
         B: AsRef<BlockId> + Send + Sync,
         A: AsRef<Felt> + Send + Sync,
     {
-        self.connection()
-            .get_nonce(block_id, contract_address)
-            .await
+        self.inner().get_nonce(block_id, contract_address).await
     }
 
     async fn get_storage_proof<B, H, A, K>(
@@ -510,7 +370,7 @@ impl Middleware for ArbiterMiddleware {
         A: AsRef<[Felt]> + Send + Sync,
         K: AsRef<[core_types::ContractStorageKeys]> + Send + Sync,
     {
-        self.connection()
+        self.inner()
             .get_storage_proof(
                 block_id,
                 class_hashes,
@@ -527,7 +387,7 @@ impl Middleware for ArbiterMiddleware {
     where
         I: AsRef<core_types::BroadcastedInvokeTransaction> + Send + Sync,
     {
-        self.connection()
+        self.inner()
             .add_invoke_transaction(invoke_transaction)
             .await
     }
@@ -539,7 +399,7 @@ impl Middleware for ArbiterMiddleware {
     where
         D: AsRef<core_types::BroadcastedDeclareTransaction> + Send + Sync,
     {
-        self.connection()
+        self.inner()
             .add_declare_transaction(declare_transaction)
             .await
     }
@@ -551,7 +411,7 @@ impl Middleware for ArbiterMiddleware {
     where
         D: AsRef<core_types::BroadcastedDeployAccountTransaction> + Send + Sync,
     {
-        self.connection()
+        self.inner()
             .add_deploy_account_transaction(deploy_account_transaction)
             .await
     }
@@ -563,7 +423,7 @@ impl Middleware for ArbiterMiddleware {
     where
         H: AsRef<Felt> + Send + Sync,
     {
-        self.connection().trace_transaction(transaction_hash).await
+        self.inner().trace_transaction(transaction_hash).await
     }
 
     async fn simulate_transactions<B, T, S>(
@@ -577,7 +437,7 @@ impl Middleware for ArbiterMiddleware {
         T: AsRef<[core_types::BroadcastedTransaction]> + Send + Sync,
         S: AsRef<[core_types::SimulationFlag]> + Send + Sync,
     {
-        self.connection()
+        self.inner()
             .simulate_transactions(block_id, transactions, simulation_flags)
             .await
     }
@@ -589,7 +449,7 @@ impl Middleware for ArbiterMiddleware {
     where
         B: AsRef<BlockId> + Send + Sync,
     {
-        self.connection().trace_block_transactions(block_id).await
+        self.inner().trace_block_transactions(block_id).await
     }
 
     async fn batch_requests<R>(
@@ -599,30 +459,6 @@ impl Middleware for ArbiterMiddleware {
     where
         R: AsRef<[ProviderRequestData]> + Send + Sync,
     {
-        self.connection().batch_requests(requests).await
-    }
-}
-
-struct ExampleLoggingMiddleware<T: Middleware> {
-    inner: T,
-}
-
-#[async_trait::async_trait]
-impl<T: Middleware + Send + Sync> Middleware for ExampleLoggingMiddleware<T> {
-    type Inner = T;
-
-    fn inner(&self) -> &Self::Inner {
-        &self.inner
-    }
-
-    fn connection(&self) -> &Connection {
-        self.inner.connection()
-    }
-
-    async fn create_block(&self) -> Result<(), ProviderError> {
-        trace!("Creating a block in ExampleLoggingMiddleware");
-        let res = self.inner().create_block().await;
-        trace!("done Creating a block in ExampleLoggingMiddleware");
-        res
+        self.inner().batch_requests(requests).await
     }
 }

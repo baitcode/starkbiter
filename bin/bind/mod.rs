@@ -35,9 +35,22 @@ pub(crate) fn cainome_bind(src: &str, dest: &str, use_debug: &bool) -> std::io::
     };
 
     let contract_derives = if *use_debug {
-        vec!["Debug", "Clone"]
+        vec![
+            "Debug",
+            "Clone",
+            "Serialize",
+            "Deserialize",
+            "Debug",
+            // "DeserializeOwned",
+        ]
     } else {
-        vec!["Clone"]
+        vec![
+            "Clone",
+            "Serialize",
+            "Deserialize",
+            "Debug",
+            // "DeserializeOwned",
+        ]
     };
 
     let out_path = PathBuf::from(dest);
@@ -94,7 +107,8 @@ pub(crate) fn cainome_bind(src: &str, dest: &str, use_debug: &bool) -> std::io::
                 // .with_types_aliases(aliases)
                 .with_derives(derives.iter().map(|d| d.to_string()).collect())
                 .with_execution_version(cainome::rs::ExecutionVersion::V3)
-                .with_contract_derives(contract_derives.iter().map(|d| d.to_string()).collect());
+                .with_contract_derives(contract_derives.iter().map(|d| d.to_string()).collect())
+                .with_imports(vec!["serde::{Serialize, Deserialize}".to_string()]);
 
             abigen
                 .generate()

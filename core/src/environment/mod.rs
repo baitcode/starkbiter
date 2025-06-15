@@ -20,27 +20,38 @@ use std::thread::{self, JoinHandle};
 
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use starknet::providers::Url;
-use starknet_core::types::{self as core_types};
+use starknet_core::types::{self as core_types, Call, Felt};
+use starknet_core::utils::get_selector_from_name;
 use starknet_devnet_core::constants::{self as devnet_constants};
 
 use starknet_devnet_core::error::Error as DevnetError;
 use starknet_devnet_core::starknet::starknet_config::ForkConfig;
+use starknet_devnet_core::state::{CustomState, CustomStateReader};
 use starknet_devnet_core::{
     starknet::{starknet_config::StarknetConfig, Starknet},
     state::StateReader,
 };
 use starknet_devnet_types::chain_id::ChainId;
+use starknet_devnet_types::contract_class::ContractClass;
+
 use starknet_devnet_types::error::Error;
 use starknet_devnet_types::rpc::block::BlockResult;
+use starknet_devnet_types::rpc::gas_modification::GasModificationRequest;
+use starknet_devnet_types::rpc::transaction_receipt::TransactionReceipt;
+use starknet_devnet_types::rpc::transactions::broadcasted_deploy_account_transaction_v3::BroadcastedDeployAccountTransactionV3;
 use starknet_devnet_types::rpc::transactions::{
     BroadcastedDeclareTransaction, BroadcastedDeployAccountTransaction,
     BroadcastedInvokeTransaction, BroadcastedTransaction, SimulationFlag,
 };
+use starknet_devnet_types::starknet_api;
 use starknet_devnet_types::starknet_api::transaction::fields::{Calldata, ContractAddressSalt};
+use starknet_devnet_types::starknet_api::transaction::TransactionHasher;
+use starknet_devnet_types::traits::HashProducer;
 use starknet_devnet_types::{contract_address::ContractAddress, num_bigint::BigUint};
 
 use starknet_devnet_types::starknet_api::core::{self as api_core, PatriciaKey};
 use starknet_devnet_types::starknet_api::state::StorageKey;
+
 use tokio::sync::broadcast::channel;
 
 use crate::tokens::get_token_data;
@@ -178,7 +189,6 @@ impl Environment {
     pub fn builder() -> EnvironmentBuilder {
         EnvironmentBuilder {
             parameters: EnvironmentParameters::default(),
-            // db: ArbiterDB::default(),
         }
     }
 
@@ -191,15 +201,6 @@ impl Environment {
             instruction_receiver,
             event_broadcaster,
         };
-
-        // let inspector = if parameters.console_logs || parameters.pay_gas {
-        //     Some(ArbiterInspector::new(
-        //         parameters.console_logs,
-        //         parameters.pay_gas,
-        //     ))
-        // } else {
-        //     Some(ArbiterInspector::new(false, false))
-        // };
 
         Self {
             socket,
@@ -274,6 +275,7 @@ impl Environment {
                         starknet_config,
                         label.unwrap_or_else(|| "default".to_string()),
                         instruction_receiver,
+                        event_broadcaster,
                     )
                     .await
                 });
@@ -328,89 +330,42 @@ impl Environment {
 pub(crate) struct Socket {
     pub(crate) instruction_sender: Arc<InstructionSender>,
     pub(crate) instruction_receiver: InstructionReceiver,
-    pub(crate) event_broadcaster: BroadcastSender<Broadcast>,
-}
-
-/// Enum representing the types of broadcasts that can be sent.
-///
-/// This enum is used to differentiate between different types of broadcasts
-/// that can be sent from the environment to external entities.
-///
-/// Variants:
-/// * `StopSignal`: Represents a signal to stop the event logger process.
-// /// * `Event(Vec<Log>)`: Represents a broadcast of a vector of Ethereum logs.
-#[derive(Clone, Debug)]
-pub enum Broadcast {
-    /// Represents a signal to stop the event logger process.
-    StopSignal,
-    /// Represents a broadcast of a vector of Ethereum logs.
-    Event(Vec<String>, ReceiptData),
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    pub(crate) const TEST_ENV_LABEL: &str = "test";
-    const TEST_CONTRACT_SIZE_LIMIT: usize = 42069;
-    const TEST_GAS_LIMIT: u64 = 1_333_333_333_337;
-
-    #[test]
-    fn new_with_parameters() {
-        // let environment = Environment::builder()
-        //     .with_label(TEST_ENV_LABEL)
-        //     .with_contract_size_limit(TEST_CONTRACT_SIZE_LIMIT)
-        //     .with_gas_limit(Felt::from(TEST_GAS_LIMIT));
-        // assert_eq!(environment.parameters.label, Some(TEST_ENV_LABEL.into()));
-        // assert_eq!(
-        //     environment.parameters.contract_size_limit.unwrap(),
-        //     TEST_CONTRACT_SIZE_LIMIT
-        // );
-        // assert_eq!(
-        //     environment.parameters.gas_limit.unwrap(),
-        //     Felt::from(TEST_GAS_LIMIT)
-        // );
-    }
+    pub(crate) event_broadcaster: BroadcastSender<Vec<core_types::EmittedEvent>>,
 }
 
 async fn process_instructions(
     starknet_config: &StarknetConfig,
     label: String,
     instruction_receiver: Receiver<(Instruction, Sender<Result<Outcome, ArbiterCoreError>>)>,
+    event_broadcaster: BroadcastSender<Vec<core_types::EmittedEvent>>,
 ) -> Result<(), ArbiterCoreError> {
     trace!(
         "Forking url: {:?} at blockHash {:?} and block number: {:?}. Erc20 predeploy: {:?}",
         starknet_config.fork_config.url,
         starknet_config.fork_config.block_hash,
         starknet_config.fork_config.block_number,
-        false // starknet_config.predeploy_erc20,
+        false
     );
 
     // Fork configuration
     let mut starknet = Starknet::new(&starknet_config).unwrap();
 
     trace!("Devnet created");
-
     // Initialize counters that are returned on some receipts.
-    // let mut transaction_index = 0_u64;
-    // let mut last_executed_gas_price: u128 = 0;
-    // let mut cumulative_gas_per_block = BigUint::from(0_u128);
-
     // Loop over the instructions sent through the socket.
     while let Ok((instruction, sender)) = instruction_receiver.recv() {
-        trace!(
-            "Instruction {:?} received by environment labeled: {:?}",
-            instruction,
-            label
-        );
-
         let result: Result<Outcome, ArbiterCoreError> = match instruction {
             Instruction::Node(ref basic_instruction) => match basic_instruction {
                 NodeInstruction::GetSpecVersion => {
+                    trace!("Environment. Received GetSpecVersion instruction");
                     let outcome = Outcome::Node(NodeOutcome::SpecVersion("unknown".to_string()));
                     Ok(outcome)
                 }
                 NodeInstruction::GetBlockWithTxHashes { block_id } => {
+                    trace!(
+                        "Environment. Received GetBlockWithTxHashes instruction: {:?}",
+                        block_id
+                    );
                     let block_result = starknet
                         .get_block_with_transactions(block_id)
                         .map_err(|e| ArbiterCoreError::DevnetError(e))?;
@@ -431,6 +386,10 @@ async fn process_instructions(
                     Ok(Outcome::Node(NodeOutcome::GetBlockWithTxHashes(outcome)))
                 }
                 NodeInstruction::GetBlockWithTxs { block_id } => {
+                    trace!(
+                        "Environment. Received GetBlockWithTxs instruction: {:?}",
+                        block_id
+                    );
                     let block_result = starknet
                         .get_block_with_transactions(&block_id)
                         .map_err(|e| ArbiterCoreError::DevnetError(e))?;
@@ -449,6 +408,10 @@ async fn process_instructions(
                     Ok(Outcome::Node(NodeOutcome::GetBlockWithTxs(outcome)))
                 }
                 NodeInstruction::GetBlockWithReceipts { block_id } => {
+                    trace!(
+                        "Environment. Received GetBlockWithReceipts instruction: {:?}",
+                        block_id
+                    );
                     let block_result = starknet
                         .get_block_with_receipts(&block_id)
                         .map_err(|e| ArbiterCoreError::DevnetError(e))?;
@@ -469,6 +432,10 @@ async fn process_instructions(
                     Ok(Outcome::Node(NodeOutcome::GetBlockWithReceipts(outcome)))
                 }
                 NodeInstruction::GetStateUpdate { block_id } => {
+                    trace!(
+                        "Environment. Received GetStateUpdate instruction: {:?}",
+                        block_id
+                    );
                     let res = starknet
                         .block_state_update(block_id)
                         .map_err(|e| ArbiterCoreError::DevnetError(e))?;
@@ -481,6 +448,12 @@ async fn process_instructions(
                     // TODO: hmmmm, something is off
                     block_id,
                 } => {
+                    trace!(
+                        "Environment. Received GetStorageAt instruction: {:?} {:?} {:?}",
+                        contract_address,
+                        key,
+                        block_id
+                    );
                     let state = starknet.get_state();
 
                     let contract_address = api_core::ContractAddress::try_from(*contract_address)
@@ -501,6 +474,10 @@ async fn process_instructions(
                     Ok(Outcome::Node(NodeOutcome::GetStorageAt(outcome)))
                 }
                 NodeInstruction::GetMessagesStatus { transaction_hash } => {
+                    trace!(
+                        "Environment. Received GetMessagesStatus instruction: {:?}",
+                        transaction_hash
+                    );
                     let outcome = starknet
                         .get_messages_status(*transaction_hash)
                         .unwrap_or(Vec::new());
@@ -509,6 +486,10 @@ async fn process_instructions(
                     )))
                 }
                 NodeInstruction::GetTransactionStatus { transaction_hash } => {
+                    trace!(
+                        "Environment. Received GetTransactionStatus instruction: {:?}",
+                        transaction_hash
+                    );
                     let transaction_hash = core_types::Felt::try_from(transaction_hash)
                         .map_err(|e| ArbiterCoreError::InternalError(e.to_string()))?;
 
@@ -521,6 +502,10 @@ async fn process_instructions(
                     )))
                 }
                 NodeInstruction::GetTransactionByHash { transaction_hash } => {
+                    trace!(
+                        "Environment. Received GetTransactionByHash instruction: {:?}",
+                        transaction_hash
+                    );
                     let transaction_hash = core_types::Felt::try_from(transaction_hash)
                         .map_err(|e| ArbiterCoreError::InternalError(e.to_string()))?;
 
@@ -533,6 +518,11 @@ async fn process_instructions(
                     )))
                 }
                 NodeInstruction::GetTransactionByBlockIdAndIndex { block_id, index } => {
+                    trace!(
+                        "Environment. Received GetTransactionByBlockIdAndIndex instruction: {:?} {:?}",
+                        block_id,
+                        index
+                    );
                     let transaction = starknet
                         .get_transaction_by_block_id_and_index(&block_id, *index)
                         .map_err(|e| ArbiterCoreError::DevnetError(e))?;
@@ -542,6 +532,10 @@ async fn process_instructions(
                     )))
                 }
                 NodeInstruction::GetTransactionReceipt { transaction_hash } => {
+                    trace!(
+                        "Environment. Received GetTransactionReceipt instruction: {:?}",
+                        transaction_hash
+                    );
                     let transaction_hash = core_types::Felt::try_from(transaction_hash)
                         .map_err(|e| ArbiterCoreError::InternalError(e.to_string()))?;
 
@@ -557,6 +551,11 @@ async fn process_instructions(
                     block_id,
                     class_hash,
                 } => {
+                    trace!(
+                        "Environment. Received GetClass instruction: {:?} {:?}",
+                        block_id,
+                        class_hash
+                    );
                     let klass = starknet
                         .get_class(&block_id, *class_hash)
                         .map_err(|e| ArbiterCoreError::DevnetError(e))?;
@@ -571,6 +570,12 @@ async fn process_instructions(
                     block_id,
                     contract_address,
                 } => {
+                    trace!(
+                        "Environment. Received GetClassHashAt instruction: {:?} {:?}",
+                        block_id,
+                        contract_address
+                    );
+
                     let contract_address =
                         ContractAddress::new(*contract_address).expect("Should always work");
 
@@ -584,6 +589,12 @@ async fn process_instructions(
                     block_id,
                     contract_address,
                 } => {
+                    trace!(
+                        "Environment. Received GetClassAt instruction: {:?} {:?}",
+                        block_id,
+                        contract_address
+                    );
+
                     let contract_address =
                         ContractAddress::new(*contract_address).expect("Should always work");
 
@@ -598,6 +609,11 @@ async fn process_instructions(
                     )))
                 }
                 NodeInstruction::GetBlockTransactionCount { block_id } => {
+                    trace!(
+                        "Environment. Received GetBlockTransactionCount instruction: {:?}",
+                        block_id
+                    );
+
                     let count = starknet
                         .get_block_txs_count(&block_id)
                         .map_err(|e| ArbiterCoreError::DevnetError(e))?;
@@ -605,6 +621,8 @@ async fn process_instructions(
                     Ok(Outcome::Node(NodeOutcome::GetBlockTransactionCount(count)))
                 }
                 NodeInstruction::BlockNumber => {
+                    trace!("Environment. Received BlockNumber instruction");
+
                     let block = starknet
                         .get_latest_block()
                         .map_err(|e| ArbiterCoreError::DevnetError(e))?;
@@ -614,6 +632,8 @@ async fn process_instructions(
                     )))
                 }
                 NodeInstruction::BlockHashAndNumber => {
+                    trace!("Environment. Received BlockHashAndNumber instruction");
+
                     let block = starknet
                         .get_latest_block()
                         .map_err(|e| ArbiterCoreError::DevnetError(e))?;
@@ -626,6 +646,8 @@ async fn process_instructions(
                     )))
                 }
                 NodeInstruction::ChainId => {
+                    trace!("Environment. Received ChainId instruction");
+
                     let chain_id = starknet_config.chain_id;
                     Ok(Outcome::Node(NodeOutcome::ChainId(chain_id.into())))
                 }
@@ -637,6 +659,13 @@ async fn process_instructions(
                     continuation_token,
                     chunk_size,
                 } => {
+                    trace!(
+                        "Environment. Received GetEvents instruction: {:?} {:?} {:?}",
+                        filter,
+                        continuation_token,
+                        chunk_size
+                    );
+
                     let skip = if let Some(s) = continuation_token {
                         s.parse::<u64>()
                             .expect("Continuation token should be a valid u64")
@@ -695,15 +724,21 @@ async fn process_instructions(
                         )
                         .map_err(|e| ArbiterCoreError::DevnetError(e))?;
 
-                    trace!("Environment. Call result: {:?} ", res);
+                    trace!("Environment. Call res: {:?} ", res);
 
                     Ok(Outcome::Node(NodeOutcome::Call(res)))
                 }
                 NodeInstruction::AddInvokeTransaction { transaction } => {
+                    trace!(
+                        "Environment. Received AddInvokeTransaction instruction: {:?}",
+                        transaction
+                    );
+
+                    let converted_transaction =
+                        BroadcastedInvokeTransaction::V3(transaction.clone().into());
+
                     let tx_hash = starknet
-                        .add_invoke_transaction(BroadcastedInvokeTransaction::V3(
-                            transaction.clone().into(),
-                        ))
+                        .add_invoke_transaction(converted_transaction)
                         .map_err(|e| ArbiterCoreError::DevnetError(e))?;
 
                     Ok(Outcome::Node(NodeOutcome::AddInvokeTransaction(
@@ -713,6 +748,11 @@ async fn process_instructions(
                     )))
                 }
                 NodeInstruction::AddDeclareTransaction { transaction } => {
+                    trace!(
+                        "Environment. Received AddDeclareTransaction instruction: {:?}",
+                        transaction
+                    );
+
                     let (tx_hash, class_hash) = starknet
                         .add_declare_transaction(BroadcastedDeclareTransaction::V3(Box::new(
                             transaction.clone().into(),
@@ -727,6 +767,11 @@ async fn process_instructions(
                     )))
                 }
                 NodeInstruction::AddDeployAccountTransaction { transaction } => {
+                    trace!(
+                        "Environment. Received AddDeployAccountTransaction instruction: {:?}",
+                        transaction
+                    );
+
                     let (tx_hash, contract_address) = starknet
                         .add_deploy_account_transaction(BroadcastedDeployAccountTransaction::V3(
                             transaction.clone().into(),
@@ -741,6 +786,11 @@ async fn process_instructions(
                     )))
                 }
                 NodeInstruction::TraceTransaction { transaction_hash } => {
+                    trace!(
+                        "Environment. Received TraceTransaction instruction: {:?}",
+                        transaction_hash
+                    );
+
                     let trace = starknet
                         .get_transaction_trace_by_hash(*transaction_hash)
                         .map_err(|e| ArbiterCoreError::DevnetError(e))?;
@@ -752,6 +802,13 @@ async fn process_instructions(
                     transactions,
                     simulation_flags,
                 } => {
+                    trace!(
+                        "Environment. Received SimulateTransactions instruction: {:?} {:?} {:?}",
+                        block_id,
+                        transactions,
+                        simulation_flags
+                    );
+
                     let res = starknet
                         .simulate_transactions(
                             &block_id,
@@ -769,6 +826,11 @@ async fn process_instructions(
                     )))
                 }
                 NodeInstruction::TraceBlockTransactions { block_id } => {
+                    trace!(
+                        "Environment. Received TraceBlockTransactions instruction: {:?}",
+                        block_id
+                    );
+
                     let res = starknet
                         .get_transaction_traces_from_block(&block_id)
                         .map_err(|e| ArbiterCoreError::DevnetError(e))?;
@@ -782,13 +844,22 @@ async fn process_instructions(
                     simulate_flags,
                     block_id,
                 } => {
+                    trace!(
+                        "Environment. Received EstimateFee instruction: {:?} {:?} {:?}",
+                        request,
+                        simulate_flags,
+                        block_id
+                    );
+
                     let txs = &[BroadcastedTransaction::from(request.clone())];
 
-                    // NOTE: good example of From trait superiority
-                    let simulation_flags = &[SimulationFlag::from(*simulate_flags)];
+                    let simulation_flags = simulate_flags
+                        .iter()
+                        .map(|f| SimulationFlag::from(*f))
+                        .collect::<Vec<_>>();
 
                     let fees = starknet
-                        .estimate_fee(&block_id, txs, simulation_flags)
+                        .estimate_fee(&block_id, txs, &simulation_flags.as_slice())
                         .map_err(|e| ArbiterCoreError::DevnetError(e))?;
 
                     Ok(Outcome::Node(NodeOutcome::EstimateFee(
@@ -796,6 +867,12 @@ async fn process_instructions(
                     )))
                 }
                 NodeInstruction::EstimateMessageFee { message, block_id } => {
+                    trace!(
+                        "Environment. Received EstimateMessageFee instruction: {:?} {:?}",
+                        message,
+                        block_id
+                    );
+
                     let fee = starknet
                         .estimate_message_fee(&block_id, message.clone())
                         .map_err(|e| ArbiterCoreError::DevnetError(e))?;
@@ -806,6 +883,12 @@ async fn process_instructions(
                     block_id,
                     contract_address,
                 } => {
+                    trace!(
+                        "Environment. Received GetNonce instruction: {:?} {:?}",
+                        block_id,
+                        contract_address
+                    );
+
                     let contract_address =
                         ContractAddress::new(*contract_address).expect("Should always work.");
 
@@ -817,65 +900,205 @@ async fn process_instructions(
                 }
             },
             Instruction::Cheat(ref cheat_instruction) => match cheat_instruction {
+                instruction::CheatInstruction::SetNextBlockGas { gas_modification } => {
+                    trace!("Environment. Received SetNextBlockGas instruction");
+
+                    let modification = starknet
+                        .set_next_block_gas(gas_modification.clone())
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    Ok(Outcome::Cheat(
+                        instruction::CheatcodesReturn::SetNextBlockGas(modification),
+                    ))
+                }
+                instruction::CheatInstruction::DeclareContract { sierra_json } => {
+                    trace!("Environment. Received DeclareContract instruction: ",);
+
+                    let contract_class = ContractClass::cairo_1_from_sierra_json_str(&sierra_json)
+                        .map_err(|e| ArbiterCoreError::InternalError(e.to_string()))?;
+
+                    let sierra_contract_class = ContractClass::Cairo1(contract_class);
+
+                    let class_hash = sierra_contract_class
+                        .generate_hash()
+                        .map_err(|e| ArbiterCoreError::InternalError(e.to_string()))?;
+
+                    trace!("Class hash generated: {:?}", class_hash);
+
+                    let state = starknet.get_state();
+
+                    if !state.is_contract_declared(class_hash) {
+                        state
+                            .predeclare_contract_class(class_hash, sierra_contract_class.clone())?;
+                        trace!("Contract class predeclared");
+                    }
+
+                    starknet
+                        .commit_diff()
+                        .map_err(|e| ArbiterCoreError::DevnetError(e.into()))?;
+
+                    let class_hash = api_core::ClassHash(class_hash);
+
+                    Ok(Outcome::Cheat(
+                        instruction::CheatcodesReturn::DeclareContract(class_hash.0),
+                    ))
+                }
                 instruction::CheatInstruction::CreateAccount {
-                    public_key,
+                    signing_key,
                     class_hash,
                     prefunded_balance,
                 } => {
-                    let mut state = starknet.get_state();
+                    trace!(
+                        "Environment. Received CreateAccount instruction: {:?} {:?}",
+                        class_hash,
+                        prefunded_balance
+                    );
 
-                    let deployer =
-                        api_core::ContractAddress::try_from(core_types::Felt::from(0_u32))
-                            .map_err(|e| ArbiterCoreError::DevnetError(e.into()))?;
-
-                    let class_hash = api_core::ClassHash(*class_hash);
+                    let salt = core_types::Felt::from(20_u32);
+                    let public_key = signing_key.verifying_key();
+                    let calldata_felts = vec![
+                        core_types::Felt::ZERO,
+                        public_key.scalar(),
+                        core_types::Felt::ONE,
+                    ];
 
                     let account_address = api_core::calculate_contract_address(
-                        ContractAddressSalt(core_types::Felt::from(20_u32)), // TODO: rethink
-                        class_hash,
-                        &Calldata(Arc::new(vec![public_key.scalar()])),
-                        deployer,
+                        ContractAddressSalt(salt), // TODO: rethink
+                        api_core::ClassHash(*class_hash),
+                        &Calldata(Arc::new(calldata_felts.clone())),
+                        0_u128.into(),
                     )
                     .map_err(|e| ArbiterCoreError::DevnetError(e.into()))?;
 
-                    trace!(
-                        "Create account. Address: {:?}, Class Hash: {:?}",
-                        account_address,
-                        class_hash
-                    );
+                    let is_account_contract_declared = {
+                        let state = starknet.get_state();
+                        state.is_contract_declared(*class_hash)
+                    };
 
-                    // Predeploy the declared contract.
-                    // state
-                    //     .set_class_hash_at(account_address, class_hash)
-                    //     .map_err(|e| ArbiterCoreError::DevnetError(e.into()))?;
+                    {
+                        let mut state = starknet.get_state();
+                        // Same as Top up balance, except only strk token is minted
+                        trace!("Minting tokens...");
+                        utils::mint_tokens_in_erc20_contract(
+                            &mut state,
+                            devnet_constants::STRK_ERC20_CONTRACT_ADDRESS,
+                            account_address.into(),
+                            prefunded_balance.clone(),
+                        )?;
+                        starknet.commit_diff()?;
+                    }
 
-                    trace!("Class hash set. Minting tokens...");
+                    if !is_account_contract_declared {
+                        Err(ArbiterCoreError::DevnetError(
+                            DevnetError::ContractClassLoadError("Not declared".to_string()),
+                        ))
+                    } else {
+                        let mut tx = starknet_api::transaction::DeployAccountTransactionV3 {
+                            resource_bounds:
+                                starknet_api::transaction::fields::ValidResourceBounds::AllResources(
+                                    starknet_api::transaction::fields::AllResourceBounds {
+                                        l1_gas: starknet_api::transaction::fields::ResourceBounds {
+                                            max_amount:
+                                                starknet_api::execution_resources::GasAmount(
+                                                    1000000,
+                                                ),
+                                            max_price_per_unit: starknet_api::block::GasPrice(1),
+                                        },
+                                        l1_data_gas:
+                                            starknet_api::transaction::fields::ResourceBounds {
+                                                max_amount:
+                                                    starknet_api::execution_resources::GasAmount(
+                                                        1000000,
+                                                    ),
+                                                max_price_per_unit: starknet_api::block::GasPrice(
+                                                    1,
+                                                ),
+                                            },
+                                        l2_gas: starknet_api::transaction::fields::ResourceBounds {
+                                            max_amount:
+                                                starknet_api::execution_resources::GasAmount(
+                                                    1000000,
+                                                ),
+                                            max_price_per_unit: starknet_api::block::GasPrice(1),
+                                        },
+                                    },
+                                ),
+                            tip: starknet_api::transaction::fields::Tip(0),
+                            signature: starknet_api::transaction::fields::TransactionSignature(
+                                vec![],
+                            ),
+                            nonce: starknet_api::core::Nonce(core_types::Felt::ZERO),
+                            class_hash: starknet_api::core::ClassHash(*class_hash),
+                            contract_address_salt:
+                                starknet_api::transaction::fields::ContractAddressSalt(salt),
+                            constructor_calldata: starknet_api::transaction::fields::Calldata(
+                                Arc::new(calldata_felts.clone()),
+                            ),
+                            nonce_data_availability_mode:
+                                starknet_api::data_availability::DataAvailabilityMode::L2,
+                            fee_data_availability_mode:
+                                starknet_api::data_availability::DataAvailabilityMode::L2,
+                            paymaster_data: starknet_api::transaction::fields::PaymasterData(
+                                vec![],
+                            ),
+                        };
 
-                    utils::mint_tokens_in_erc20_contract(
-                        &mut state,
-                        devnet_constants::STRK_ERC20_CONTRACT_ADDRESS,
-                        account_address.into(),
-                        prefunded_balance.clone(),
-                    )?;
+                        let hash = tx
+                            .calculate_transaction_hash(
+                                &starknet_config.chain_id.into(),
+                                &starknet_api::transaction::TransactionVersion::THREE,
+                            )
+                            .unwrap();
 
-                    utils::simulate_constructor(state, account_address, public_key.scalar())?;
+                        let signature = signing_key.sign(&hash).unwrap();
 
-                    starknet.commit_diff()?;
+                        tx.signature =
+                            starknet_api::transaction::fields::TransactionSignature(vec![
+                                signature.r,
+                                signature.s,
+                            ]);
 
-                    Ok(Outcome::Cheat(
-                        instruction::CheatcodesReturn::CreateAccount(account_address.into()),
-                    ))
+                        let tx = BroadcastedDeployAccountTransactionV3::from(tx);
+
+                        let z = starknet.add_deploy_account_transaction(
+                            BroadcastedDeployAccountTransaction::V3(tx),
+                        );
+
+                        Ok(Outcome::Cheat(
+                            instruction::CheatcodesReturn::CreateAccount(account_address.into()),
+                        ))
+                    }
                 }
                 instruction::CheatInstruction::CreateBlock => {
+                    trace!("Environment. Received CreateBlock instruction");
+
                     starknet
                         .create_block()
                         .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    // let events = starknet
+                    //     .get_unlimited_events(
+                    //         Some(core_types::BlockId::Tag(core_types::BlockTag::Latest)),
+                    //         None,
+                    //         None,
+                    //         None,
+                    //     )
+                    //     .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    // let converted = events.iter().map(|e| EmittedEvent::from(e)).collect();
+
+                    // event_broadcaster.send(converted).unwrap_or_default();
 
                     Ok(Outcome::Cheat(instruction::CheatcodesReturn::CreateBlock))
                 }
                 instruction::CheatInstruction::L1Message {
                     l1_handler_transaction,
                 } => {
+                    trace!(
+                        "Environment. Received L1Message instruction: {:?}",
+                        l1_handler_transaction
+                    );
+
                     let res = starknet
                         .add_l1_handler_transaction(l1_handler_transaction.clone())
                         .map_err(|e| ArbiterCoreError::DevnetError(e))?;
@@ -888,6 +1111,13 @@ async fn process_instructions(
                     amount,
                     token,
                 } => {
+                    trace!(
+                        "Environment. Received TopUpBalance instruction: receiver: {:?}, amount: {:?}, token: {:?}",
+                        receiver,
+                        amount,
+                        token
+                    );
+
                     let mut state = starknet.get_state();
 
                     let receiver = ContractAddress::new(receiver.clone())
@@ -910,6 +1140,11 @@ async fn process_instructions(
                     Ok(Outcome::Cheat(instruction::CheatcodesReturn::TopUpBalance))
                 }
                 instruction::CheatInstruction::Impersonate { address } => {
+                    trace!(
+                        "Environment. Received Impersonate instruction: {:?}",
+                        address
+                    );
+
                     starknet
                         .impersonate_account(ContractAddress::new(address.clone()).unwrap())
                         .map_err(|e| ArbiterCoreError::DevnetError(e))?;
@@ -917,6 +1152,11 @@ async fn process_instructions(
                     Ok(Outcome::Cheat(instruction::CheatcodesReturn::Impersonate))
                 }
                 instruction::CheatInstruction::StopImpersonating { address } => {
+                    trace!(
+                        "Environment. Received StopImpersonating instruction: {:?}",
+                        address
+                    );
+
                     starknet.stop_impersonating_account(
                         &ContractAddress::new(address.clone()).unwrap(),
                     );
@@ -930,6 +1170,13 @@ async fn process_instructions(
                     key,
                     value,
                 } => {
+                    trace!(
+                        "Environment. Received SetStorageAt instruction: address: {:?}, key: {:?}, value: {:?}",
+                        address,
+                        key,
+                        value
+                    );
+
                     let state = starknet.get_state();
 
                     let patricia_key = PatriciaKey::try_from(*address).map_err(|e| {
@@ -949,6 +1196,25 @@ async fn process_instructions(
                         })?;
 
                     Ok(Outcome::Cheat(instruction::CheatcodesReturn::SetStorageAt))
+                }
+                instruction::CheatInstruction::GetDeployedContractAddress { tx_hash } => {
+                    let receipt = starknet
+                        .get_transaction_receipt_by_hash(tx_hash)
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+
+                    if let TransactionReceipt::Deploy(deploy_receipt) = receipt {
+                        Ok(Outcome::Cheat(
+                            instruction::CheatcodesReturn::GetDeployedContractAddress(
+                                deploy_receipt.contract_address.into(),
+                            ),
+                        ))
+                    } else {
+                        Err(ArbiterCoreError::DevnetError(
+                            DevnetError::UnexpectedInternalError {
+                                msg: "No deploy events found in tx receipt".to_string(),
+                            },
+                        ))
+                    }
                 }
             },
             Instruction::System => todo!(),

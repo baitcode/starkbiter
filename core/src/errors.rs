@@ -84,8 +84,8 @@ pub enum ArbiterCoreError {
     RecvError(#[from] RecvError),
 
     /// Failed to parse integer from string.
-    #[error(transparent)]
-    FromStrRadixError(#[from] uint::FromStrRadixErr),
+    // #[error(transparent)]
+    // FromStrRadixError(#[from] uint::FromStrRadixErr),
 
     /// Failed to handle json.
     #[error(transparent)]

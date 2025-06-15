@@ -5,7 +5,9 @@
 #![allow(clippy::all)]
 #![allow(warnings)]
 
-#[derive(Clone)]
+use serde::{Serialize, Deserialize};
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct ContractsCounter<A: starknet::accounts::ConnectedAccount + Sync> {
     pub address: starknet::core::types::Felt,
     pub account: A,
@@ -34,7 +36,7 @@ impl<A: starknet::accounts::ConnectedAccount + Sync> ContractsCounter<A> {
         Self { block_id, ..self }
     }
 }
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct ContractsCounterReader<P: starknet::providers::Provider + Sync> {
     pub address: starknet::core::types::Felt,
     pub provider: P,

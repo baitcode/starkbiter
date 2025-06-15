@@ -833,6 +833,7 @@ checksum = "ade8366b8bd5ba243f0a58f036cc0ca8a2f069cff1a2351ef1cac6b083e16fc0"
 [[package]]
 name = "cainome"
 version = "0.8.0"
+source = "git+https://github.com/baitcode/cainome.git?branch=bugfix-event-conflicts#e39c0bafb06f87c65129041edad0f75f008a3a51"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -858,6 +859,7 @@ dependencies = [
 [[package]]
 name = "cainome-cairo-serde"
 version = "0.2.1"
+source = "git+https://github.com/baitcode/cainome.git?branch=bugfix-event-conflicts#e39c0bafb06f87c65129041edad0f75f008a3a51"
 dependencies = [
  "num-bigint",
  "serde",
@@ -869,6 +871,7 @@ dependencies = [
 [[package]]
 name = "cainome-cairo-serde-derive"
 version = "0.1.0"
+source = "git+https://github.com/baitcode/cainome.git?branch=bugfix-event-conflicts#e39c0bafb06f87c65129041edad0f75f008a3a51"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -879,6 +882,7 @@ dependencies = [
 [[package]]
 name = "cainome-parser"
 version = "0.3.0"
+source = "git+https://github.com/baitcode/cainome.git?branch=bugfix-event-conflicts#e39c0bafb06f87c65129041edad0f75f008a3a51"
 dependencies = [
  "convert_case 0.8.0",
  "quote",
@@ -891,6 +895,7 @@ dependencies = [
 [[package]]
 name = "cainome-rs"
 version = "0.3.1"
+source = "git+https://github.com/baitcode/cainome.git?branch=bugfix-event-conflicts#e39c0bafb06f87c65129041edad0f75f008a3a51"
 dependencies = [
  "anyhow",
  "cainome-cairo-serde",
@@ -908,6 +913,7 @@ dependencies = [
 [[package]]
 name = "cainome-rs-macro"
 version = "0.3.0"
+source = "git+https://github.com/baitcode/cainome.git?branch=bugfix-event-conflicts#e39c0bafb06f87c65129041edad0f75f008a3a51"
 dependencies = [
  "anyhow",
  "cainome-cairo-serde",

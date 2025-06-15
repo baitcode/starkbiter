@@ -200,6 +200,7 @@ impl Behavior<Message> for TokenAdmin {
                 }
             }
         }
+        self.client.as_ref().unwrap().create_block().await?;
         Ok(ControlFlow::Continue)
     }
 }

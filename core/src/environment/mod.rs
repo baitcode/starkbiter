@@ -20,7 +20,7 @@ use std::thread::{self, JoinHandle};
 
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use starknet::providers::Url;
-use starknet_core::types::{self as core_types, Call, Felt};
+use starknet_core::types::{self as core_types, Call, EmittedEvent, Felt};
 use starknet_core::utils::get_selector_from_name;
 use starknet_devnet_core::constants::{self as devnet_constants};
 
@@ -1072,22 +1072,24 @@ async fn process_instructions(
                 instruction::CheatInstruction::CreateBlock => {
                     trace!("Environment. Received CreateBlock instruction");
 
+                    let block = starknet.get_latest_block().unwrap();
+
                     starknet
                         .create_block()
                         .map_err(|e| ArbiterCoreError::DevnetError(e))?;
 
-                    // let events = starknet
-                    //     .get_unlimited_events(
-                    //         Some(core_types::BlockId::Tag(core_types::BlockTag::Latest)),
-                    //         None,
-                    //         None,
-                    //         None,
-                    //     )
-                    //     .map_err(|e| ArbiterCoreError::DevnetError(e))?;
+                    let events = starknet
+                        .get_unlimited_events(
+                            Some(core_types::BlockId::Hash(block.block_hash())),
+                            None,
+                            None,
+                            None,
+                        )
+                        .map_err(|e| ArbiterCoreError::DevnetError(e))?;
 
-                    // let converted = events.iter().map(|e| EmittedEvent::from(e)).collect();
+                    let converted = events.iter().map(|e| EmittedEvent::from(e)).collect();
 
-                    // event_broadcaster.send(converted).unwrap_or_default();
+                    event_broadcaster.send(converted).unwrap_or_default();
 
                     Ok(Outcome::Cheat(instruction::CheatcodesReturn::CreateBlock))
                 }

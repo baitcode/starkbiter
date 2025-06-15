@@ -82,6 +82,8 @@ impl Connection {
             loop {
                 match rx.recv().await {
                     Ok(val) => {
+                        tracing::trace!("Received events: {:?}", val);
+
                         let res = val
                             .iter()
                             .map(|el| T::try_from(el))

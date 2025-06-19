@@ -1,14 +1,10 @@
 //! The [`middleware`] module provides functionality to interact with
-//! Ethereum-like virtual machines. It achieves this by offering a middleware
-//! implementation for sending and reading transactions, as well as watching
-//! for events.
+//! Starknet-like virtual machines. It unites Provider trait and CheatingProvider trait
+//! and adds some covienience methods for working with starknet-rs accounts.
 //!
 //! Main components:
-//! - [`ArbiterMiddleware`]: The core middleware implementation.
+//! - [`StarkbiterMiddleware`]: The core middleware implementation.
 //! - [`Connection`]: Handles communication with the Ethereum VM.
-//! - [`FilterReceiver`]: Facilitates event watching based on certain filters.
-
-#![warn(missing_docs)]
 
 pub mod traits;
 
@@ -21,7 +17,6 @@ use async_trait;
 use futures::{stream, Stream, StreamExt};
 use starknet_accounts::{ExecutionEncoding, SingleOwnerAccount};
 use starknet_devnet_types::{
-    felt::Calldata,
     num_bigint::BigUint,
     rpc::gas_modification::{GasModification, GasModificationRequest},
 };
@@ -45,7 +40,7 @@ use starknet_core::types::{self as core_types, EmittedEvent};
 
 /// A middleware structure that integrates with `revm`.
 ///
-/// [`ArbiterMiddleware`] serves as a bridge between the application and
+/// [`StarkbiterMiddleware`] serves as a bridge between the application and
 /// [`revm`]'s execution environment, allowing for transaction sending, call
 /// execution, and other core functions. It uses a custom connection and error
 /// system tailored to Revm's specific needs.
@@ -57,36 +52,38 @@ use starknet_core::types::{self as core_types, EmittedEvent};
 ///
 /// Basic usage:
 /// ```
-/// use arbiter_core::{environment::Environment, middleware::ArbiterMiddleware};
+/// use arbiter_core::{environment::Environment, middleware::StarkbiterMiddleware};
 ///
 /// // Create a new environment and run it
 /// let mut environment = Environment::builder().build();
 ///
 /// // Retrieve the environment to create a new middleware instance
-/// let middleware = ArbiterMiddleware::new(&environment, Some("test_label"));
+/// let middleware = StarkbiterMiddleware::new(&environment, Some("test_label"));
 /// ```
 /// The client can now be used for transactions with the environment.
 /// Use a seed like `Some("test_label")` for maintaining a
 /// consistent address across simulations and client labeling. Seeding is be
 /// useful for debugging and post-processing.
 #[derive(Debug)]
-pub struct ArbiterMiddleware {
+pub struct StarkbiterMiddleware {
     connection: Connection,
 
+    /// An optional label used to identify or seed the middleware instance
+    /// while logging and debugging.
     #[allow(unused)]
     pub label: Option<String>,
 }
 
-impl ArbiterMiddleware {
-    /// Creates a new instance of [`ArbiterMiddleware`].
+impl StarkbiterMiddleware {
+    /// Creates a new instance of [`StarkbiterMiddleware`].
     pub fn new(
         environment: &Environment,
         seed_and_label: Option<&str>,
-    ) -> Result<Arc<Self>, ArbiterCoreError> {
+    ) -> Result<Arc<Self>, StarkbiterCoreError> {
         let connection = Connection::from(environment);
 
         info!(
-            "Created new `ArbiterMiddleware` instance from a fork -- attached to environment labeled: {:?}",
+            "Created new `StarkbiterMiddleware` instance from a fork -- attached to environment labeled: {:?}",
             environment.parameters.label
         );
         Ok(Arc::new(Self {
@@ -95,6 +92,11 @@ impl ArbiterMiddleware {
         }))
     }
 
+    /// Subscribes to a stream of emitted event vectors. Vectors are produced the moment new
+    /// block is created. Events are filtered and only events of type `T` are returned.
+    ///
+    /// # Type Parameters
+    /// * `T` - A type that can be constructed from a reference to `EmittedEvent`.
     pub async fn subscribe_to<T>(&self) -> Pin<Box<dyn Stream<Item = Vec<T>> + Send + Sync>>
     where
         T: for<'a> TryFrom<&'a EmittedEvent> + Send + Sync,
@@ -102,20 +104,24 @@ impl ArbiterMiddleware {
         return self.connection.subscribe_to().await;
     }
 
+    /// Subscribes to a stream of flattened emitted events. similar to `subscribe_to`, but flat.
+    ///
+    /// # Type Parameters
+    /// * `T` - A type that can be constructed from a reference to `EmittedEvent`.
     pub async fn subscribe_to_flatten<T>(&self) -> Pin<Box<dyn Stream<Item = T> + Send + Sync>>
     where
         T: for<'a> TryFrom<&'a EmittedEvent> + Send + Sync + 'static,
     {
-        let z = self.connection.subscribe_to().await;
-        let x = z.flat_map(|v| stream::iter(v));
-        return Box::pin(x) as Pin<Box<dyn Stream<Item = T> + Send + Sync + 'static>>;
+        let vector_stream = self.connection.subscribe_to().await;
+        let item_stream = vector_stream.flat_map(|v| stream::iter(v));
+        return Box::pin(item_stream) as Pin<Box<dyn Stream<Item = T> + Send + Sync + 'static>>;
     }
 }
 
 #[async_trait::async_trait]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-impl Middleware for ArbiterMiddleware {
+impl Middleware for StarkbiterMiddleware {
     type Inner = Self;
 
     fn inner(&self) -> &Self::Inner {

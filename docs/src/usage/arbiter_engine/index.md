@@ -1,10 +1,10 @@
-# Arbiter Engine
-`arbiter-engine` provides the machinery to build agent based / event driven simulations and should be the primary entrypoint for using Arbiter.
+# Starkbiter Engine
+`starkbiter-engine` provides the machinery to build agent based / event driven simulations and should be the primary entrypoint for using Starkbiter.
 The goal of this crate is to abstract away the work required to set up agents, their behaviors, and the worlds they live in.
-At the moment, all interaction of agents is done through the `arbiter-core` crate and is meant to be for local simulations and it is not yet generalized for the case of live network automation.
+At the moment, all interaction of agents is done through the `starkbiter-core` crate and is meant to be for local simulations and it is not yet generalized for the case of live network automation.
 
 ## Hierarchy
-The primary components of `arbiter-engine` are, from the bottom up:
+The primary components of `starkbiter-engine` are, from the bottom up:
 - `Behavior<E>`: This is an event-driven behavior that takes in some item of type `E` and can act on that. 
 The `Behavior<E>` has two methods: `startup` and `process`. 
     - `startup` is meant to initialize the `Behavior<E>` and any context around it.
@@ -15,7 +15,7 @@ The `Behavior<E>` has two methods: `startup` and `process`.
     - `Engine<B,E>` is a struct owns a `B: Behavior<E>` and the event stream `Stream<Item = E>` that the `Behavior<E>` will use for processing.
     - `StateMachine` is a trait that reduces the interface to `Engine<B,E>` to a single method: `execute`.
     This trait allows `Agent`s to have multiple behaviors that may not use the same event type.
-- `Agent` a struct that contains an ID, a client (`Arc<RevmMiddleware>`) that provides means to send calls and transactions to an Arbiter `Environment`, and a `Messager`.
+- `Agent` a struct that contains an ID, a client (`Arc<RevmMiddleware>`) that provides means to send calls and transactions to an Starkbiter `Environment`, and a `Messager`.
     - `Messager` is a struct that owns a `Sender` and `Receiver` for sending and receiving messages.
     This is a way for `Agent`s to communicate with each other.
     It can also be streamed and used for processing messages in a `Behavior<Message>`.

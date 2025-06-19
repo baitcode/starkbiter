@@ -1,25 +1,28 @@
 use async_trait::async_trait;
 use auto_impl::auto_impl;
 
-use starknet::{
-    providers::ProviderError,
-    signers::{SigningKey, VerifyingKey},
-};
+use starknet::{providers::ProviderError, signers::SigningKey};
 use starknet_core::types::Felt;
 use starknet_devnet_types::{
-    felt::Calldata,
     num_bigint::BigUint,
     rpc::gas_modification::{GasModification, GasModificationRequest},
 };
 
 use crate::tokens::TokenId;
 
+///
+/// A trait for providing cheating functionalities such as creating accounts,
+/// topping up balances, and impersonating accounts.
+///
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[auto_impl(&, Box, Arc)]
 pub trait CheatingProvider {
+    /// Makes underlying provider to create a new block out of all pending changes.
     async fn create_block(&self) -> Result<(), ProviderError>;
 
+    /// Creates a new account with the given signing key, class hash, and prefunded balance.
+    /// Returns the address of the created account.
     async fn create_account<V, F, I>(
         &self,
         signing_key: V,
@@ -31,6 +34,8 @@ pub trait CheatingProvider {
         F: Into<Felt> + Send + Sync,
         I: Into<BigUint> + Send + Sync;
 
+    /// Top up the balance of the given receiver with the specified amount and token.
+    /// Uses smallest denomination of the token.
     async fn top_up_balance<C, B, T>(
         &self,
         receiver: C,
@@ -42,14 +47,18 @@ pub trait CheatingProvider {
         B: Into<BigUint> + Send + Sync,
         T: Into<TokenId> + Send + Sync;
 
+    /// Registers address for impersonation. Means that validation step for all transactions
+    /// from that address will be skipped.
     async fn impersonate<C>(&self, address: C) -> Result<(), ProviderError>
     where
         C: AsRef<Felt> + Send + Sync;
 
+    /// Deregisters address for impersonation.
     async fn stop_impersonating_account<C>(&self, address: C) -> Result<(), ProviderError>
     where
         C: AsRef<Felt> + Send + Sync;
 
+    /// Directly manipulates contracts storage at a given address.
     async fn set_storage_at<C, K, V>(
         &self,
         address: C,
@@ -61,10 +70,13 @@ pub trait CheatingProvider {
         K: AsRef<Felt> + Send + Sync,
         V: AsRef<Felt> + Send + Sync;
 
+    /// Declares a contract with the given Sierra JSON.
+    /// Returns the class hash of the declared contract.
     async fn declare_contract<S>(&self, sierra_json: S) -> Result<Felt, ProviderError>
     where
         S: Into<String> + Send + Sync;
 
+    /// Manipulates the next block's gas settings. Can also produce a block.
     async fn set_next_block_gas<G>(
         &self,
         gas_modification_request: G,
@@ -72,6 +84,8 @@ pub trait CheatingProvider {
     where
         G: Into<GasModificationRequest> + Send + Sync;
 
+    /// Checks if transaction contains UDC deploy contract event fetches first and returns
+    /// address from it.
     async fn get_deployed_contract_address<F>(&self, tx_hash: F) -> Result<Felt, ProviderError>
     where
         F: Into<Felt> + Send + Sync;

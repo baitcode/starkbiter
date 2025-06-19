@@ -10,7 +10,7 @@ Use the table of contents icon on the top left corner of this document to get to
 
 ## New contributor guide
 
-To get an overview of the project, read the [README](https://github.com/anthias-labs/arbiter/blob/main/README.md). Here are some resources to help you get started with open source contributions:
+To get an overview of the project, read the [README](https://github.com/astraly-labs/starkbiter/blob/main/README.md). Here are some resources to help you get started with open source contributions:
 
 - [Finding ways to contribute to open source on GitHub](https://docs.github.com/en/get-started/exploring-projects-on-github/finding-ways-to-contribute-to-open-source-on-github)
 - [Set up Git](https://docs.github.com/en/get-started/quickstart/set-up-git)
@@ -28,7 +28,7 @@ If you spot a problem with the docs, [search if an issue already exists](https:/
 
 #### Solve an issue
 
-Scan through our [existing issues](https://github.com/anthias-labs/arbiter/issues) to find one that interests you. You can narrow down the search using `labels` as filters. If you find an issue to work on, you are welcome to assign it to yourself and open a PR with a fix.
+Scan through our [existing issues](https://github.com/astraly-labs/starkbiter/issues) to find one that interests you. You can narrow down the search using `labels` as filters. If you find an issue to work on, you are welcome to assign it to yourself and open a PR with a fix.
 
 ### Make Changes
 
@@ -64,4 +64,4 @@ Once you submit your PR, a Arbiter team member will review your proposal. We may
 
 Congratulations :tada::tada: The Anthias Labs team thanks you :sparkles:. 
 
-Once your PR is merged, your contributions will be publicly visible on the [Arbiter Repository](https://github.com/anthias-labs/arbiter).
+Once your PR is merged, your contributions will be publicly visible on the [Arbiter Repository](https://github.com/astraly-labs/starkbiter).

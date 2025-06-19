@@ -6,50 +6,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.4.0](https://github.com/anthias-labs/arbiter/compare/arbiter-engine-v0.3.2...arbiter-engine-v0.4.0) - 2024-04-26
+## [0.4.0](https://github.com/astraly-labs/starkbiter/compare/arbiter-engine-v0.3.2...arbiter-engine-v0.4.0) - 2024-04-26
 
 ### Other
-- Some repository Tender Loving Care. Should fix release please once merged.  ([#959](https://github.com/anthias-labs/arbiter/pull/959))
-- db management ([#922](https://github.com/anthias-labs/arbiter/pull/922))
-- *(deps)* bump tokio-stream from 0.1.14 to 0.1.15 ([#939](https://github.com/anthias-labs/arbiter/pull/939))
+- Some repository Tender Loving Care. Should fix release please once merged.  ([#959](https://github.com/astraly-labs/starkbiter/pull/959))
+- db management ([#922](https://github.com/astraly-labs/starkbiter/pull/922))
+- *(deps)* bump tokio-stream from 0.1.14 to 0.1.15 ([#939](https://github.com/astraly-labs/starkbiter/pull/939))
 
-## [0.3.2](https://github.com/anthias-labs/arbiter/compare/arbiter-engine-v0.3.1...arbiter-engine-v0.3.2) - 2024-02-26
+## [0.3.2](https://github.com/astraly-labs/starkbiter/compare/arbiter-engine-v0.3.1...arbiter-engine-v0.3.2) - 2024-02-26
 
 ### Added
-- `error!` output from behavior ([#913](https://github.com/anthias-labs/arbiter/pull/913))
+- `error!` output from behavior ([#913](https://github.com/astraly-labs/starkbiter/pull/913))
 
-## [0.3.1](https://github.com/anthias-labs/arbiter/compare/arbiter-engine-v0.3.0...arbiter-engine-v0.3.1) - 2024-02-20
+## [0.3.1](https://github.com/astraly-labs/starkbiter/compare/arbiter-engine-v0.3.0...arbiter-engine-v0.3.1) - 2024-02-20
 
 ### Other
 - update Cargo.toml dependencies
 
-## [0.3.0](https://github.com/anthias-labs/arbiter/compare/arbiter-engine-v0.2.1...arbiter-engine-v0.3.0) - 2024-02-16
+## [0.3.0](https://github.com/astraly-labs/starkbiter/compare/arbiter-engine-v0.2.1...arbiter-engine-v0.3.0) - 2024-02-16
 
 ### Added
-- *(engine)* optional stream for behaviors ([#899](https://github.com/anthias-labs/arbiter/pull/899))
+- *(engine)* optional stream for behaviors ([#899](https://github.com/astraly-labs/starkbiter/pull/899))
 
 ### Other
-- refactor engine tests and examples ([#895](https://github.com/anthias-labs/arbiter/pull/895))
+- refactor engine tests and examples ([#895](https://github.com/astraly-labs/starkbiter/pull/895))
 
-## [0.2.1](https://github.com/anthias-labs/arbiter/compare/arbiter-engine-v0.2.0...arbiter-engine-v0.2.1) - 2024-02-15
+## [0.2.1](https://github.com/astraly-labs/starkbiter/compare/arbiter-engine-v0.2.0...arbiter-engine-v0.2.1) - 2024-02-15
 
 ### Other
 - update Cargo.toml dependencies
 
-## [0.2.0](https://github.com/anthias-labs/arbiter/compare/arbiter-engine-v0.1.1...arbiter-engine-v0.2.0) - 2024-02-13
+## [0.2.0](https://github.com/astraly-labs/starkbiter/compare/arbiter-engine-v0.1.1...arbiter-engine-v0.2.0) - 2024-02-13
 
 ### Added
-- *(arbiter-macros)* `#[arbiter_macros::main]` and a project example ([#880](https://github.com/anthias-labs/arbiter/pull/880))
+- *(arbiter-macros)* `#[arbiter_macros::main]` and a project example ([#880](https://github.com/astraly-labs/starkbiter/pull/880))
 
 ### Other
-- Engine/world from config ([#882](https://github.com/anthias-labs/arbiter/pull/882))
+- Engine/world from config ([#882](https://github.com/astraly-labs/starkbiter/pull/882))
 
-## [0.1.1](https://github.com/anthias-labs/arbiter/compare/arbiter-engine-v0.1.0...arbiter-engine-v0.1.1) - 2024-02-12
+## [0.1.1](https://github.com/astraly-labs/starkbiter/compare/arbiter-engine-v0.1.0...arbiter-engine-v0.1.1) - 2024-02-12
 
 ### Other
-- remove `PhantomData` ([#868](https://github.com/anthias-labs/arbiter/pull/868))
+- remove `PhantomData` ([#868](https://github.com/astraly-labs/starkbiter/pull/868))
 
-## [0.1.0](https://github.com/anthias-labs/arbiter/releases/tag/arbiter-engine-v0.1.0) - 2024-01-23
+## [0.1.0](https://github.com/astraly-labs/starkbiter/releases/tag/arbiter-engine-v0.1.0) - 2024-01-23
 
 ### Added
 - `World::stop()` method

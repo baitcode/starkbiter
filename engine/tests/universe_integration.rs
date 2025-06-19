@@ -1,6 +1,6 @@
 use std::fs::{read_to_string, remove_file, File};
 
-use arbiter_engine::{agent::Agent, universe::Universe, world::World};
+use starkbiter_engine::{agent::Agent, universe::Universe, world::World};
 use tracing_subscriber::{fmt, EnvFilter};
 include!("common.rs");
 

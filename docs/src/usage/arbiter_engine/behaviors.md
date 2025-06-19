@@ -1,5 +1,5 @@
 # Behaviors
-The design of `arbiter-engine` is centered around the concept of `Agent`s and `Behavior`s.
+The design of `starkbiter-engine` is centered around the concept of `Agent`s and `Behavior`s.
 At the core, we place `Behavior`s as the event-driven machinery that defines the entire simulation.
 What we want is that your simulation is defined completely with how your `Agent`s behaviors are defined.
 All you should be looking for is how to define your `Agent`s behaviors and what emergent properties you want to observe.

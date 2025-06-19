@@ -1,3 +1,12 @@
+//!
+//! This module is a wrapper around the bridged token data from starkgate.io bridged tokens
+//! data JSON files.
+//!
+//! It exports `get_token_data` that returns the bridged token data for a given TokenId
+//! TokenId is exported as well. This is intended to be used with forked Starknet Devnet
+//! Mainnet and Sepolia networks.
+//!
+
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use starknet_core::types::Felt;

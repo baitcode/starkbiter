@@ -4,8 +4,8 @@
 use std::pin::Pin;
 
 use anyhow::Result;
-use arbiter_core::middleware::ArbiterMiddleware;
 use futures_util::{Stream, StreamExt};
+use starkbiter_core::middleware::StarkbiterMiddleware;
 use tokio::task::JoinHandle;
 use tracing::error;
 
@@ -26,7 +26,7 @@ pub type EventStream<E> = Pin<Box<dyn Stream<Item = E> + Send + Sync>>;
 #[derive(Clone, Debug)]
 pub enum MachineInstruction {
     /// Used to make a [`StateMachine`] start up.
-    Start(Arc<ArbiterMiddleware>, Messager),
+    Start(Arc<StarkbiterMiddleware>, Messager),
 
     /// Used to make a [`StateMachine`] process events.
     /// This will offload the process into a task that can be halted by sending
@@ -79,7 +79,7 @@ pub trait Behavior<E: Send + 'static>:
     /// that it can do given the current state of the world.
     async fn startup(
         &mut self,
-        client: Arc<ArbiterMiddleware>,
+        client: Arc<StarkbiterMiddleware>,
         messager: Messager,
     ) -> Result<Option<EventStream<E>>>;
 

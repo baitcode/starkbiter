@@ -1,13 +1,8 @@
 #![warn(missing_docs)]
-use std::{
-    fs::{self, write, File},
-    io::{self, BufRead, BufReader, ErrorKind},
-    path::PathBuf,
-    process::Command,
-};
+use std::{fs, path::PathBuf};
 
 mod digest;
-use self::digest::ArbiterConfig;
+use self::digest::StarkbiterConfig;
 use cainome::rs::Abigen;
 use inflector::Inflector;
 
@@ -24,7 +19,7 @@ use inflector::Inflector;
 ///   tool is not installed.
 
 pub(crate) fn cainome_bind(src: &str, dest: &str, use_debug: &bool) -> std::io::Result<()> {
-    let arbiter_config = ArbiterConfig::new().unwrap_or_default();
+    let arbiter_config = StarkbiterConfig::new().unwrap_or_default();
     // TODO: ???
     // let project_bidnings_output_path = arbiter_config.bindings_path;
 

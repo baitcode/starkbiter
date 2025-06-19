@@ -89,7 +89,7 @@ async fn fork_into_arbiter() {
     let environment = Environment::builder().with_state(fork.db).build();
 
     // Create a client
-    let client = ArbiterMiddleware::new(&environment, Some("name")).unwrap();
+    let client = StarkbiterMiddleware::new(&environment, Some("name")).unwrap();
 
     // Deal with the weth contract
     let weth_meta = fork.contracts_meta.get("weth").unwrap();
@@ -122,7 +122,7 @@ async fn middleware_from_forked_eo() {
 
     let vitalik_address = fork.eoa.get("vitalik").unwrap();
     let vitalik_as_a_client =
-        ArbiterMiddleware::new_from_forked_eoa(&environment, *vitalik_address);
+        StarkbiterMiddleware::new_from_forked_eoa(&environment, *vitalik_address);
     assert!(vitalik_as_a_client.is_ok());
     let vitalik_as_a_client = vitalik_as_a_client.unwrap();
 

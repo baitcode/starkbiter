@@ -4,14 +4,14 @@ pub mod token_requester;
 use std::sync::Arc;
 
 use anyhow::Result;
-use arbiter_core::middleware::ArbiterMiddleware;
-use arbiter_engine::{
+use cainome::cairo_serde::ContractAddress;
+use serde::{Deserialize, Serialize};
+use starkbiter_core::middleware::StarkbiterMiddleware;
+use starkbiter_engine::{
     machine::{Behavior, ControlFlow, CreateStateMachine, Engine, EventStream, StateMachine},
     messager::{Message, Messager, To},
 };
-use arbiter_macros::Behaviors;
-use cainome::cairo_serde::ContractAddress;
-use serde::{Deserialize, Serialize};
+use starkbiter_macros::Behaviors;
 use tracing::{debug, error, trace, warn};
 
 #[derive(Behaviors, Debug, Clone, Serialize, Deserialize)]

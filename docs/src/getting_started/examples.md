@@ -2,41 +2,38 @@
 
 We have a few examples to help you get started with Arbiter. These examples are designed to be simple and easy to understand. They are also designed to be easy to run and modify. We hope you find them helpful!
 
-Our examples are in the [examples](https://github.com/anthias-labs/arbiter/tree/main/examples) directory. There are two examples: one for building a simulation and one fork forking the mainnet state.
+Our example is in the [examples](https://github.com/astraly-labs/starkbiter/tree/main/examples) directory. 
 
 ## Simulation
 
-You can run them with the following command:
+You can run it with the following command:
 
 ```bash
-cargo run --example project simulate examples/project/configs/example.toml
+cargo run --example minter simulate ./examples/minter/config.toml -vvvv
 ```
+                                    
+This will run the minter simulation. This simulation is rather complex one. There are two agents:
+ - Token Admin (*TA*)
+ - Token Requested (*TR*)
 
-This will run the minimal counter-simulation. The simulation is very minimal and is designed to be easy to understand. It uses an arbiter main macro to derive the `incrementer` behavior for a single agent. Our design philosophy is that the users of Arbiter should only need to define behaviors and a configuration toml for the behaviors. You can see how the behaviors were represented in this simulation in the [behaviors](https://github.com/anthias-labs/arbiter/tree/main/examples/project/behaviors) module. We implement a single behavior for the incrementer struct that deploys the counter on startup and then on the increment event will increment the count. 
-
-For more information on the behavior trait please see the section on [behaviors](https://anthias-labs.github.io/arbiter/usage/arbiter_engine/behaviors.html)
-
+*TA* creates ERC20 contracts and subscribes to a highlivel messenger that *TR* uses to communicate the intent for minting more tokens. Upon receiving the intent *TA* mints tokens for *TR*. *TR*, in turn, upon creation subscribes to TokenMinted event defined in ERC20 contract implmentation and upon noting it being emitted by the devnet requests more token. This effectively creates and endless loop of token minting that is being broken when certain amount of tokens were minted.
 
 ## Forking
 
-You can run the fork example with the following command:
+Forking from command line is not yet supported.
+Forking using environment configuration needs to be tested.
 
-```bash
-arbiter fork examples/fork/weth_config.toml
-```
-
-This will fork the state specified in the `weth_config.toml` file. If you would like to fork a different state, you can modify the `weth_config.toml` file to point to include additional EOAs or contract storage. Once you have forked the state you want, you can start your simulation with the forked state by loading it into a memory revm instance like so:
+But you can fork from code like that:
 
 ```rust ignore
-use arbiter_core::{database::Fork::*, Environment, ArbiterMiddleware};
-
-let fork = Fork::from_disk("tests/fork.json").unwrap();
-
-// Get the environment going
-let environment = Environment::builder().with_db(fork.db).build();
-
-// Create a client
-let client = ArbiterMiddleware::new(&environment, Some("name")).unwrap();
+let env = Environment::builder()
+    .with_chain_id(chain_id.into())
+    .with_fork(
+        Url::from_str("http://json-rpc-provider-to-fork-from:1234").unwrap(),
+        1000, // Block number to fork from
+        Some(Felt::from_str("0xblock_hash").unwrap()), 
+    )
+    .build();
 ```
 
 

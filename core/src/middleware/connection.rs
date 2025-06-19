@@ -3,12 +3,12 @@ use std::{pin::Pin, sync::Weak};
 
 use async_trait;
 
-use futures::{Stream, TryStreamExt};
+use futures::Stream;
 use starknet::providers::{Provider, ProviderError};
 
 use starknet_core::types::{self as core_types, EventFilter};
 
-use starknet_devnet_types::{felt::Calldata, num_bigint::BigUint};
+use starknet_devnet_types::num_bigint::BigUint;
 use tokio::sync::broadcast;
 
 use super::*;
@@ -52,6 +52,7 @@ impl From<&Environment> for Connection {
 }
 
 impl Connection {
+    //! Sends an instruction to the [`Environment`] and waits for the outcome
     async fn send_instruction_recv_outcome(
         &self,
         to_send: Instruction,
@@ -72,6 +73,11 @@ impl Connection {
         return Ok(res);
     }
 
+    /// Subscribes to a stream of emitted event vectors. Vectors are produced the moment new
+    /// block is created. Events are filtered and only events of type `T` are returned.
+    ///
+    /// # Type Parameters
+    /// * `T` - A type that can be constructed from a reference to `EmittedEvent`.
     pub async fn subscribe_to<T>(&self) -> Pin<Box<dyn Stream<Item = Vec<T>> + Send + Sync>>
     where
         T: for<'a> TryFrom<&'a EmittedEvent> + Send + Sync,

@@ -11,7 +11,7 @@ You can run `arbiter init <simulation_name> --no-git` to remove the `.git` direc
 
 ## Bindings
 
-You can load or write your own smart contracts in the `arbiter-bindings/contracts/` directory and begin writing your own simulations. 
+You can load or write your own smart contracts in the `starkbiter-bindings/contracts/` directory and begin writing your own simulations. 
 Arbiter treats Rust smart-contract bindings as first-class citizens. 
 The contract bindings are generated via Foundry's `forge` command. 
 `arbiter bind` wraps `forge` with some convenience features that will generate all your bindings to src/bindings as a rust module. 
@@ -49,7 +49,7 @@ arbiter fork <fork_config.toml>
 ```
 
 This will create a fork of the network you specified in the config file and store it in the location you specified.
-It can then be loaded into an `arbiter-core` `Environment` by using the `Fork::from_disk()` method.
+It can then be loaded into an `starkbiter-core` `Environment` by using the `Fork::from_disk()` method.
 
 Forking is done this way to make sure that all emulation done does not require a constant connection to an RPC-endpoint.
 

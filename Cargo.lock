@@ -181,121 +181,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e16d2d3311acee920a9eb8d33b8cbc1787ce4a264e85f964c2404b969bdcd487"
 
 [[package]]
-name = "arbiter"
-version = "0.4.20"
-dependencies = [
- "Inflector",
- "anyhow",
- "arbiter-bindings",
- "arbiter-core",
- "arbiter-engine",
- "arbiter-macros",
- "assert_cmd",
- "async-trait",
- "cainome",
- "clap",
- "config",
- "foundry-config",
- "futures",
- "proc-macro2",
- "rayon",
- "serde",
- "serde_json",
- "starknet-accounts",
- "starknet-core",
- "starknet-devnet-core",
- "starknet-devnet-types",
- "starknet-signers",
- "starknet_api",
- "syn 2.0.101",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "toml 0.8.22",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "arbiter-bindings"
-version = "0.1.7"
-dependencies = [
- "cainome",
- "serde",
- "starknet",
- "starknet-accounts",
- "starknet-core",
- "starknet-signers",
- "starknet_api",
-]
-
-[[package]]
-name = "arbiter-core"
-version = "0.11.0"
-dependencies = [
- "anyhow",
- "arbiter-bindings",
- "assert_matches",
- "async-stream",
- "async-trait",
- "auto_impl",
- "cainome",
- "cargo_metadata",
- "chrono",
- "crossbeam-channel",
- "ethers",
- "ethers-providers",
- "futures",
- "futures-locks",
- "futures-timer",
- "serde",
- "serde_json",
- "starknet",
- "starknet-accounts",
- "starknet-core",
- "starknet-devnet-core",
- "starknet-devnet-types",
- "starknet_api",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "arbiter-engine"
-version = "0.4.0"
-dependencies = [
- "anyhow",
- "arbiter-bindings",
- "arbiter-core",
- "arbiter-macros",
- "async-stream",
- "async-trait",
- "crossbeam-channel",
- "ethers",
- "futures",
- "futures-util",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tokio",
- "tokio-stream",
- "toml 0.8.22",
- "tracing",
- "tracing-subscriber",
- "tracing-test",
-]
-
-[[package]]
-name = "arbiter-macros"
-version = "0.1.4"
-dependencies = [
- "quote",
- "syn 2.0.101",
-]
-
-[[package]]
 name = "ark-ec"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6395,6 +6280,121 @@ name = "stable_deref_trait"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
+
+[[package]]
+name = "starkbiter"
+version = "0.1.0"
+dependencies = [
+ "Inflector",
+ "anyhow",
+ "assert_cmd",
+ "async-trait",
+ "cainome",
+ "clap",
+ "config",
+ "foundry-config",
+ "futures",
+ "proc-macro2",
+ "rayon",
+ "serde",
+ "serde_json",
+ "starkbiter-bindings",
+ "starkbiter-core",
+ "starkbiter-engine",
+ "starkbiter-macros",
+ "starknet-accounts",
+ "starknet-core",
+ "starknet-devnet-core",
+ "starknet-devnet-types",
+ "starknet-signers",
+ "starknet_api",
+ "syn 2.0.101",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "toml 0.8.22",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "starkbiter-bindings"
+version = "0.1.7"
+dependencies = [
+ "cainome",
+ "serde",
+ "starknet",
+ "starknet-accounts",
+ "starknet-core",
+ "starknet-signers",
+ "starknet_api",
+]
+
+[[package]]
+name = "starkbiter-core"
+version = "0.11.0"
+dependencies = [
+ "anyhow",
+ "assert_matches",
+ "async-stream",
+ "async-trait",
+ "auto_impl",
+ "cainome",
+ "cargo_metadata",
+ "chrono",
+ "crossbeam-channel",
+ "ethers",
+ "ethers-providers",
+ "futures",
+ "futures-locks",
+ "futures-timer",
+ "serde",
+ "serde_json",
+ "starkbiter-bindings",
+ "starknet",
+ "starknet-accounts",
+ "starknet-core",
+ "starknet-devnet-core",
+ "starknet-devnet-types",
+ "starknet_api",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "starkbiter-engine"
+version = "0.4.0"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "async-trait",
+ "crossbeam-channel",
+ "ethers",
+ "futures",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "starkbiter-bindings",
+ "starkbiter-core",
+ "starkbiter-macros",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-stream",
+ "toml 0.8.22",
+ "tracing",
+ "tracing-subscriber",
+ "tracing-test",
+]
+
+[[package]]
+name = "starkbiter-macros"
+version = "0.1.4"
+dependencies = [
+ "quote",
+ "syn 2.0.101",
+]
 
 [[package]]
 name = "starknet"

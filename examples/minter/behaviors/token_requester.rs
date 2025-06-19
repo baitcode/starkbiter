@@ -1,10 +1,10 @@
 use std::num::NonZero;
 
-use arbiter_bindings::{
+use starkbiter_bindings::{
     erc_20_mintable_oz0::{ERC20ComponentEvent, Erc20MintableOZ0},
     ARGENT_v040_SIERRA,
 };
-use arbiter_core::middleware::traits::Middleware;
+use starkbiter_core::middleware::traits::Middleware;
 
 use starknet_accounts::{Account, SingleOwnerAccount};
 
@@ -28,7 +28,7 @@ pub(crate) struct TokenRequester {
     pub address: Option<Felt>,
     /// Client to have an address to receive token mint to and check balance
     #[serde(skip)]
-    pub client: Option<Arc<ArbiterMiddleware>>,
+    pub client: Option<Arc<StarkbiterMiddleware>>,
     /// The messaging layer for the token requester.
     #[serde(skip)]
     pub messager: Option<Messager>,
@@ -44,7 +44,7 @@ pub fn default_max_count() -> Option<u64> {
 
 type ERC20Contract = Erc20MintableOZ0<
     SingleOwnerAccount<
-        arbiter_core::middleware::connection::Connection,
+        starkbiter_core::middleware::connection::Connection,
         starknet_signers::LocalWallet,
     >,
 >;
@@ -67,7 +67,7 @@ impl Behavior<ERC20ComponentEvent> for TokenRequester {
     #[tracing::instrument(skip(self), fields(id = messager.id.as_deref()))]
     async fn startup(
         &mut self,
-        client: Arc<ArbiterMiddleware>,
+        client: Arc<StarkbiterMiddleware>,
         mut messager: Messager,
     ) -> Result<Option<EventStream<ERC20ComponentEvent>>> {
         messager

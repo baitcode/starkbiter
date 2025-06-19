@@ -1,18 +1,24 @@
-use arbiter_bindings::{
+use starkbiter_bindings::{
     contracts_counter::ContractsCounter, erc_20_mintable_oz0::Erc20MintableOZ0, ARGENT_v040_SIERRA,
     ERC20_CONTRACT_SIERRA,
 };
-use arbiter_core::middleware::traits::Middleware;
+use starkbiter_core::{
+    environment::Environment,
+    middleware::{traits::Middleware, StarkbiterMiddleware},
+};
+use starknet::signers::SigningKey;
 use starknet_accounts::Account;
+use starknet_devnet_core::constants;
 use std::{num::NonZero, str::FromStr};
 
 use cainome::cairo_serde::{ContractAddress, U256};
 
-use starknet_core::{types::Call, utils::get_selector_from_name};
+use starknet_core::{
+    types::{Call, Felt},
+    utils::get_selector_from_name,
+};
 
 use starknet_devnet_types::{chain_id::ChainId, rpc::gas_modification::GasModificationRequest};
-
-include!("common.rs");
 
 const ALL_GAS_1: GasModificationRequest = GasModificationRequest {
     gas_price_wei: NonZero::new(1_u128),
@@ -27,9 +33,14 @@ const ALL_GAS_1: GasModificationRequest = GasModificationRequest {
     generate_block: Some(true),
 };
 
+pub fn setup_log() {
+    std::env::set_var("RUST_LOG", "trace");
+    tracing_subscriber::fmt::try_init();
+}
+
 #[tokio::test]
 async fn test_create_account_and_use_it_to_deploy_udc_counter_contract() {
-    log();
+    setup_log();
 
     // Custom chain ID for Starknet
     let chain_id = ChainId::Custom(Felt::from_str("0x696e766f6b65").unwrap());
@@ -39,7 +50,7 @@ async fn test_create_account_and_use_it_to_deploy_udc_counter_contract() {
         .with_chain_id(chain_id.into())
         .build();
 
-    let client = ArbiterMiddleware::new(&env, Some("wow")).unwrap();
+    let client = StarkbiterMiddleware::new(&env, Some("wow")).unwrap();
 
     let argent_class_hash = client.declare_contract(ARGENT_v040_SIERRA).await.unwrap();
 
@@ -52,7 +63,7 @@ async fn test_create_account_and_use_it_to_deploy_udc_counter_contract() {
         .unwrap();
 
     let counter_class_hash = client
-        .declare_contract(arbiter_bindings::COUNTER_CONTRACT_SIERRA)
+        .declare_contract(starkbiter_bindings::COUNTER_CONTRACT_SIERRA)
         .await
         .unwrap();
 
@@ -95,11 +106,13 @@ async fn test_create_account_and_use_it_to_deploy_udc_counter_contract() {
         .unwrap();
 
     assert!(result == 1, "Counter should be one");
+
+    env.stop();
 }
 
 #[tokio::test]
 async fn test_create_account_and_use_it_to_deploy_udc_erc20_contract() {
-    log();
+    setup_log();
 
     // Custom chain ID for Starknet
     let chain_id = ChainId::Custom(Felt::from_str("0x696e766f6b65").unwrap());
@@ -109,7 +122,7 @@ async fn test_create_account_and_use_it_to_deploy_udc_erc20_contract() {
         .with_chain_id(chain_id.into())
         .build();
 
-    let client = ArbiterMiddleware::new(&env, Some("wow")).unwrap();
+    let client = StarkbiterMiddleware::new(&env, Some("wow")).unwrap();
 
     let argent_class_hash = client.declare_contract(ARGENT_v040_SIERRA).await.unwrap();
 
@@ -195,4 +208,6 @@ async fn test_create_account_and_use_it_to_deploy_udc_erc20_contract() {
     assert!(balance == a_hundred, "Balance should be 100");
 
     assert!(total_supply == a_hundred, "Balance should be 100");
+
+    env.stop();
 }

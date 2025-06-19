@@ -1,6 +1,8 @@
 //! This module contains the [`Instruction`] and [`Outcome`] enums used to
 //! communicate instructions and their outcomes between the
-//! [`middleware::ArbiterMiddleware`] and the [`Environment`].
+//! [`middleware::StarkbiterMiddleware`] and the [`Environment`].
+
+use std::alloc::System;
 
 use starknet::{
     core::types::Felt,
@@ -210,7 +212,17 @@ pub enum Instruction {
     /// Cheatcode-related instruction.
     Cheat(CheatInstruction),
     /// System instruction.
-    System,
+    System(SystemInstruction),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum SystemInstruction {
+    Stop,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum SystemInstructionOutcome {
+    Stop,
 }
 
 /// Represents the possible outcomes returned from processing [`NodeInstruction`]s.
@@ -295,6 +307,7 @@ pub enum Outcome {
     Node(NodeOutcome),
     /// Cheatcode-related outcome.
     Cheat(CheatcodesReturn),
+    System(SystemInstructionOutcome),
 }
 
 /// The result of executing a transaction.

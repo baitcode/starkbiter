@@ -218,7 +218,7 @@ pub fn main(attr: TokenStream, item: TokenStream) -> TokenStream {
         async fn main() -> Result<(), Box<dyn std::error::Error>> {
             use clap::{Parser, Subcommand, ArgAction, CommandFactory};
             use tracing::Level;
-            use arbiter_engine::world::World;
+            use starkbiter_engine::world::World;
 
             #[derive(Parser)]
             #[clap(name = #name)]

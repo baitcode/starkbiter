@@ -1,4 +1,4 @@
-use arbiter_engine::{agent::Agent, world::World};
+use starkbiter_engine::{agent::Agent, world::World};
 
 include!("common.rs");
 
@@ -9,7 +9,7 @@ struct MockBehavior;
 impl Behavior<()> for MockBehavior {
     async fn startup(
         &mut self,
-        _client: Arc<ArbiterMiddleware>,
+        _client: Arc<StarkbiterMiddleware>,
         _messager: Messager,
     ) -> Result<Option<EventStream<()>>> {
         Ok(None)

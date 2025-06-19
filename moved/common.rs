@@ -3,7 +3,7 @@ use std::sync::Arc;
 use arbiter_bindings::bindings::{
     arbiter_math::ArbiterMath, arbiter_token::ArbiterToken, liquid_exchange::LiquidExchange,
 };
-use arbiter_core::{environment::Environment, middleware::ArbiterMiddleware};
+use arbiter_core::{environment::Environment, middleware::StarkbiterMiddleware};
 use ethers::utils::parse_ether;
 
 pub const TEST_ARG_NAME: &str = "ArbiterToken";
@@ -32,13 +32,13 @@ pub fn log() {
     tracing_subscriber::fmt::init();
 }
 
-pub fn startup() -> (Environment, Arc<ArbiterMiddleware>) {
+pub fn startup() -> (Environment, Arc<StarkbiterMiddleware>) {
     let env = Environment::builder().build();
-    let client = ArbiterMiddleware::new(&env, Some(TEST_SIGNER_SEED_AND_LABEL)).unwrap();
+    let client = StarkbiterMiddleware::new(&env, Some(TEST_SIGNER_SEED_AND_LABEL)).unwrap();
     (env, client)
 }
 
-pub async fn deploy_arbx(client: Arc<ArbiterMiddleware>) -> ArbiterToken<ArbiterMiddleware> {
+pub async fn deploy_arbx(client: Arc<StarkbiterMiddleware>) -> ArbiterToken<StarkbiterMiddleware> {
     ArbiterToken::deploy(
         client,
         (
@@ -53,7 +53,7 @@ pub async fn deploy_arbx(client: Arc<ArbiterMiddleware>) -> ArbiterToken<Arbiter
     .unwrap()
 }
 
-pub async fn deploy_arby(client: Arc<ArbiterMiddleware>) -> ArbiterToken<ArbiterMiddleware> {
+pub async fn deploy_arby(client: Arc<StarkbiterMiddleware>) -> ArbiterToken<StarkbiterMiddleware> {
     ArbiterToken::deploy(
         client,
         (
@@ -69,11 +69,11 @@ pub async fn deploy_arby(client: Arc<ArbiterMiddleware>) -> ArbiterToken<Arbiter
 }
 
 pub async fn deploy_liquid_exchange(
-    client: Arc<ArbiterMiddleware>,
+    client: Arc<StarkbiterMiddleware>,
 ) -> (
-    ArbiterToken<ArbiterMiddleware>,
-    ArbiterToken<ArbiterMiddleware>,
-    LiquidExchange<ArbiterMiddleware>,
+    ArbiterToken<StarkbiterMiddleware>,
+    ArbiterToken<StarkbiterMiddleware>,
+    LiquidExchange<StarkbiterMiddleware>,
 ) {
     let arbx = deploy_arbx(client.clone()).await;
     let arby = deploy_arby(client.clone()).await;
@@ -86,7 +86,9 @@ pub async fn deploy_liquid_exchange(
     (arbx, arby, liquid_exchange)
 }
 
-pub async fn deploy_arbiter_math(client: Arc<ArbiterMiddleware>) -> ArbiterMath<ArbiterMiddleware> {
+pub async fn deploy_arbiter_math(
+    client: Arc<StarkbiterMiddleware>,
+) -> ArbiterMath<StarkbiterMiddleware> {
     ArbiterMath::deploy(client, ())
         .unwrap()
         .send()

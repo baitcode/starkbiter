@@ -516,16 +516,16 @@ fn simulation_signer() {
 #[test]
 fn multiple_signer_addresses() {
     let environment = Environment::builder().build();
-    let client_1 = ArbiterMiddleware::new(&environment, Some("0")).unwrap();
-    let client_2 = ArbiterMiddleware::new(&environment, Some("1")).unwrap();
+    let client_1 = StarkbiterMiddleware::new(&environment, Some("0")).unwrap();
+    let client_2 = StarkbiterMiddleware::new(&environment, Some("1")).unwrap();
     assert_ne!(client_1.address(), client_2.address());
 }
 
 #[test]
 fn signer_collision() {
     let environment = Environment::builder().build();
-    ArbiterMiddleware::new(&environment, Some("0")).unwrap();
-    assert!(ArbiterMiddleware::new(&environment, Some("0")).is_err());
+    StarkbiterMiddleware::new(&environment, Some("0")).unwrap();
+    assert!(StarkbiterMiddleware::new(&environment, Some("0")).is_err());
 }
 
 #[tokio::test]

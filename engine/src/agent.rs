@@ -2,8 +2,8 @@
 
 use std::{fmt::Debug, sync::Arc};
 
-use arbiter_core::middleware::ArbiterMiddleware;
 use serde::{de::DeserializeOwned, Serialize};
+use starkbiter_core::middleware::StarkbiterMiddleware;
 
 use super::*;
 use crate::{
@@ -32,7 +32,7 @@ pub struct Agent {
     pub messager: Messager,
 
     /// The client the agent uses to interact with the blockchain.
-    pub client: Arc<ArbiterMiddleware>,
+    pub client: Arc<StarkbiterMiddleware>,
 
     /// The engines/behaviors that the agent uses to sync, startup, and process
     /// events.
@@ -152,7 +152,7 @@ impl AgentBuilder {
     /// ```
     pub fn build(
         self,
-        client: Arc<ArbiterMiddleware>,
+        client: Arc<StarkbiterMiddleware>,
         messager: Messager,
     ) -> Result<Agent, ArbiterEngineError> {
         match self.behavior_engines {

@@ -14,10 +14,10 @@ struct MockMetadata {
 }
 
 async fn generate_events(
-    arbx: ArbiterToken<ArbiterMiddleware>,
-    arby: ArbiterToken<ArbiterMiddleware>,
-    lex: LiquidExchange<ArbiterMiddleware>,
-    client: Arc<ArbiterMiddleware>,
+    arbx: ArbiterToken<StarkbiterMiddleware>,
+    arby: ArbiterToken<StarkbiterMiddleware>,
+    lex: LiquidExchange<StarkbiterMiddleware>,
+    client: Arc<StarkbiterMiddleware>,
 ) -> Result<(), ArbiterCoreError> {
     for _ in 0..2 {
         arbx.approve(client.address(), eU256::from(1))

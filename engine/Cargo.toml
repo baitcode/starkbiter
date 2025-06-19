@@ -1,23 +1,20 @@
 [package]
-name = "arbiter-engine"
+name = "starkbiter-engine"
 version = "0.4.0"
 edition = "2021"
-authors = [
-    "Waylon Jepsen <waylonjepsen1@gmail.com>",
-    "Colin Roberts <colin@autoparallel.xyz>",
-]
+authors = ["Baitcode <batiyiv@gmail.com>", "Matthias <matthias@pragma.build>"]
 description = "Allowing smart contract developers to do simulation driven development via an EVM emulator"
 license = "Apache-2.0"
 keywords = ["ethereum", "evm", "emulator", "testing", "smart-contracts"]
 readme = "../README.md"
-documentation = "https://docs.rs/arbiter-engine"
-homepage = "https://github.com/anthias-labs/arbiter"
-repository = "https://github.com/anthias-labs/arbiter"
+documentation = "https://docs.rs/starkbiter-engine"
+homepage = "https://github.com/astraly-labs/starkbiter"
+repository = "https://github.com/astraly-labs/starkbiter"
 
 [dependencies]
-arbiter-bindings.workspace = true
-arbiter-core.workspace = true
-arbiter-macros.workspace = true
+starkbiter-bindings.workspace = true
+starkbiter-core.workspace = true
+starkbiter-macros.workspace = true
 
 ethers.workspace = true
 
@@ -39,7 +36,7 @@ anyhow.workspace = true
 crossbeam-channel.workspace = true
 
 [dev-dependencies]
-arbiter-core.workspace = true
-arbiter-bindings.workspace = true
+starkbiter-core.workspace = true
+starkbiter-bindings.workspace = true
 tracing-subscriber = "0.3.18"
 tracing-test = "0.2.4"

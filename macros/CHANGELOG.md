@@ -6,25 +6,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.4](https://github.com/anthias-labs/arbiter/compare/arbiter-macros-v0.1.3...arbiter-macros-v0.1.4) - 2024-04-26
+## [0.1.4](https://github.com/astraly-labs/starkbiter/compare/arbiter-macros-v0.1.3...arbiter-macros-v0.1.4) - 2024-04-26
 
 ### Other
-- *(deps)* bump quote from 1.0.35 to 1.0.36 ([#947](https://github.com/anthias-labs/arbiter/pull/947))
+- *(deps)* bump quote from 1.0.35 to 1.0.36 ([#947](https://github.com/astraly-labs/starkbiter/pull/947))
 
-## [0.1.3](https://github.com/anthias-labs/arbiter/compare/arbiter-macros-v0.1.2...arbiter-macros-v0.1.3) - 2024-02-20
+## [0.1.3](https://github.com/astraly-labs/starkbiter/compare/arbiter-macros-v0.1.2...arbiter-macros-v0.1.3) - 2024-02-20
 
 ### Other
 - update Cargo.toml dependencies
 
-## [0.1.2](https://github.com/anthias-labs/arbiter/compare/arbiter-macros-v0.1.1...arbiter-macros-v0.1.2) - 2024-02-15
+## [0.1.2](https://github.com/astraly-labs/starkbiter/compare/arbiter-macros-v0.1.1...arbiter-macros-v0.1.2) - 2024-02-15
 
 ### Other
-- update docs ([#891](https://github.com/anthias-labs/arbiter/pull/891))
+- update docs ([#891](https://github.com/astraly-labs/starkbiter/pull/891))
 
-## [0.1.1](https://github.com/anthias-labs/arbiter/compare/arbiter-macros-v0.1.0...arbiter-macros-v0.1.1) - 2024-02-13
+## [0.1.1](https://github.com/astraly-labs/starkbiter/compare/arbiter-macros-v0.1.0...arbiter-macros-v0.1.1) - 2024-02-13
 
 ### Added
-- *(arbiter-macros)* `#[arbiter_macros::main]` and a project example ([#880](https://github.com/anthias-labs/arbiter/pull/880))
+- *(arbiter-macros)* `#[arbiter_macros::main]` and a project example ([#880](https://github.com/astraly-labs/starkbiter/pull/880))
 
 ### Other
-- Engine/world from config ([#882](https://github.com/anthias-labs/arbiter/pull/882))
+- Engine/world from config ([#882](https://github.com/astraly-labs/starkbiter/pull/882))

@@ -3,6 +3,11 @@ pub mod contracts_counter;
 pub mod contracts_user_values;
 pub mod erc_20_mintable_oz0;
 
+//
+// Saved contract compiled Sierra sources. Used for declaration of the contracts.
+// Should be moved to cainome.
+//
+
 pub static COUNTER_CONTRACT_SIERRA: &str =
     include_str!("../contracts/contracts_Counter.contract_class.json");
 

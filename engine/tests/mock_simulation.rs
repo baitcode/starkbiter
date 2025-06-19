@@ -2,13 +2,13 @@ const AGENT_ID: &str = "agent";
 
 use std::time::Duration;
 
-use arbiter_engine::{
+use futures_util::StreamExt;
+use starkbiter_engine::{
     agent::Agent,
     machine::{CreateStateMachine, Engine, StateMachine},
     world::World,
 };
-use arbiter_macros::Behaviors;
-use futures_util::StreamExt;
+use starkbiter_macros::Behaviors;
 use tokio::time::timeout;
 include!("common.rs");
 

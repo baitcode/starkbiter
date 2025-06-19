@@ -1,11 +1,8 @@
 [package]
-name = "arbiter-core"
+name = "starkbiter-core"
 version = "0.11.0"
 edition = "2021"
-authors = [
-    "Waylon Jepsen <waylonjepsen1@gmail.com>",
-    "Colin Roberts <colin@autoparallel.xyz>",
-]
+authors = ["Baitcode <batiyiv@gmail.com>", "Matthias <matthias@pragma.build>"]
 description = "Allowing smart contract developers to do simulation driven development via an EVM emulator"
 license = "Apache-2.0"
 keywords = ["ethereum", "evm", "emulator", "testing", "smart-contracts"]
@@ -13,7 +10,7 @@ readme = "../README.md"
 
 # Dependencies for the release build
 [dependencies]
-arbiter-bindings.workspace = true
+starkbiter-bindings.workspace = true
 
 # Ethereum and EVM
 ethers.workspace = true
@@ -52,7 +49,7 @@ tracing.workspace = true
 # Dependencies for the test build and development
 [dev-dependencies]
 cainome.workspace = true
-arbiter-bindings.workspace = true
+starkbiter-bindings.workspace = true
 tracing-subscriber = "0.3.18"
 
 # For bench

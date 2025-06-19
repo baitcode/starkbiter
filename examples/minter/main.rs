@@ -1,6 +1,6 @@
 mod behaviors;
 
-#[arbiter_macros::main(
+#[starkbiter_macros::main(
     name = "minter",
     about = "A simple token minter simulation",
     behaviors = behaviors::Behaviors

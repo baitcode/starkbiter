@@ -1,9 +1,9 @@
 use std::{collections::HashMap, num::NonZero};
 
-use arbiter_bindings::{
+use starkbiter_bindings::{
     erc_20_mintable_oz0::Erc20MintableOZ0, ARGENT_v040_SIERRA, ERC20_CONTRACT_SIERRA,
 };
-use arbiter_core::middleware::{connection::Connection, traits::Middleware};
+use starkbiter_core::middleware::{connection::Connection, traits::Middleware};
 use starknet_accounts::{Account, SingleOwnerAccount};
 use starknet_core::{
     types::{Call, Felt},
@@ -26,7 +26,7 @@ pub(crate) struct TokenAdmin {
     #[serde(skip)]
     pub tokens: HashMap<String, Erc20MintableOZ0<SingleOwnerAccount<Connection, LocalWallet>>>,
     #[serde(skip)]
-    pub client: Option<Arc<ArbiterMiddleware>>,
+    pub client: Option<Arc<StarkbiterMiddleware>>,
     #[serde(skip)]
     pub messager: Option<Messager>,
     #[serde(default)]
@@ -80,7 +80,7 @@ impl Behavior<Message> for TokenAdmin {
     #[tracing::instrument(skip(self), fields(id = messager.id.as_deref()))]
     async fn startup(
         &mut self,
-        client: Arc<ArbiterMiddleware>,
+        client: Arc<StarkbiterMiddleware>,
         messager: Messager,
     ) -> Result<Option<EventStream<Message>>> {
         self.messager = Some(messager.clone());

@@ -1,3 +1,5 @@
+//! Benchmarking Starkbiter contracts. Note: Heavy WIP.
+
 use std::{
     collections::HashMap,
     convert::TryFrom,
@@ -9,7 +11,7 @@ use arbiter_bindings::bindings::{
     arbiter_math::ArbiterMath,
     arbiter_token::{self, ArbiterToken},
 };
-use arbiter_core::{environment::Environment, middleware::ArbiterMiddleware};
+use arbiter_core::{environment::Environment, middleware::StarkbiterMiddleware};
 use ethers::{
     core::{k256::ecdsa::SigningKey, utils::Anvil},
     middleware::SignerMiddleware,
@@ -100,9 +102,9 @@ async fn main() {
 
     let df = create_dataframe(&results, &group);
 
-    match get_version_of("arbiter-core") {
-        Some(version) => println!("arbiter-core version: {}", version),
-        None => println!("Could not find version for arbiter-core"),
+    match get_version_of("starkbiter-core") {
+        Some(version) => println!("starkbiter-core version: {}", version),
+        None => println!("Could not find version for starkbiter-core"),
     }
 
     match get_version_of("ethers") {
@@ -171,10 +173,10 @@ async fn anvil_startup() -> (
     (client, anvil)
 }
 
-fn arbiter_startup() -> (Environment, Arc<ArbiterMiddleware>) {
+fn arbiter_startup() -> (Environment, Arc<StarkbiterMiddleware>) {
     let environment = Environment::builder().build();
 
-    let client = ArbiterMiddleware::new(&environment, Some("name")).unwrap();
+    let client = StarkbiterMiddleware::new(&environment, Some("name")).unwrap();
     (environment, client)
 }
 

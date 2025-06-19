@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use arbiter_core::middleware::ArbiterMiddleware;
-use arbiter_engine::{
+use serde::{Deserialize, Serialize};
+use starkbiter_core::middleware::StarkbiterMiddleware;
+use starkbiter_engine::{
     machine::{Behavior, ControlFlow, EventStream},
     messager::{Message, Messager, To},
 };
-use serde::{Deserialize, Serialize};
 
 #[allow(unused)]
 fn trace() {
@@ -57,7 +57,7 @@ impl TimedMessage {
 impl Behavior<Message> for TimedMessage {
     async fn startup(
         &mut self,
-        _client: Arc<ArbiterMiddleware>,
+        _client: Arc<StarkbiterMiddleware>,
         messager: Messager,
     ) -> Result<Option<EventStream<Message>>> {
         if let Some(startup_message) = &self.startup_message {

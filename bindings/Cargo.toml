@@ -1,5 +1,5 @@
 [package]
-name = "arbiter-bindings"
+name = "starkbiter-bindings"
 version = "0.1.7"
 edition = "2021"
 description = "Rust bindings for common solidity smart contracts"

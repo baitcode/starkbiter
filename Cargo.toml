@@ -7,20 +7,27 @@ exclude = ["benches", "docs"]
 
 # Package configuration
 [package]
-name = "arbiter"
-version = "0.4.20"
+name = "starkbiter"
+version = "0.1.0"
 edition = "2021"
-authors = [
-    "Waylon Jepsen <waylonjepsen1@gmail.com>",
-    "Colin Roberts <colin@autoparallel.xyz>",
-]
-description = "Allowing smart contract developers to do simulation driven development via an EVM emulator"
+authors = ["Baitcode <batiyiv@gmail.com>", "Matthias <matthias@pragma.build>"]
+description = "Allowing smart contract developers to do simulation driven development via an Starknet Devnet emulator"
 license = "Apache-2.0"
-keywords = ["ethereum", "evm", "emulator", "testing", "smart-contracts"]
+keywords = [
+    "starknet",
+    "cairo",
+    "emulator",
+    "simulator",
+    "simulation",
+    "agents",
+    "bindings",
+    "testing",
+    "smart-contracts",
+]
 
 # Binary configuration
 [[bin]]
-name = "arbiter"
+name = "starkbiter"
 path = "bin/main.rs"
 
 [[example]]
@@ -29,10 +36,10 @@ path = "examples/minter/main.rs"
 
 [workspace.dependencies]
 # Arbiter local for development
-arbiter-bindings = { path = "bindings" }
-arbiter-core = { path = "core" }
-arbiter-engine = { path = "engine" }
-arbiter-macros = { path = "macros" }
+starkbiter-bindings = { path = "bindings" }
+starkbiter-core = { path = "core" }
+starkbiter-engine = { path = "engine" }
+starkbiter-macros = { path = "macros" }
 
 # starknet-devnet-core = { path = "/Users/baitcode/work/starknet/starknet-devnet/crates/starknet-devnet-core" }
 starknet-devnet-core = { git = "https://github.com/baitcode/starknet-devnet.git", branch = "experiment" }
@@ -78,7 +85,7 @@ anyhow = "1.0.83"
 # Dependencies for the release build of Arbiter bin
 [dependencies]
 
-arbiter-core.workspace = true
+starkbiter-core.workspace = true
 
 starknet-accounts.workspace = true
 starknet-signers.workspace = true
@@ -107,9 +114,9 @@ tempfile = { version = "3.10.1" }
 thiserror.workspace = true
 # Dependencies for the test build and development
 [dev-dependencies]
-arbiter-bindings.workspace = true
-arbiter-engine.workspace = true
-arbiter-macros.workspace = true
+starkbiter-bindings.workspace = true
+starkbiter-engine.workspace = true
+starkbiter-macros.workspace = true
 starknet-core.workspace = true
 serde.workspace = true
 async-trait.workspace = true

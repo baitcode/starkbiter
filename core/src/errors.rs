@@ -1,9 +1,8 @@
-//! Errors that can occur when managing or interfacing with Arbiter's sandboxed
-//! Ethereum environment.
+//! Errors that can occur when managing or interfacing with Starkbiter's sandboxed
+//! Starknet Devnet environment.
 
 use std::sync::{PoisonError, RwLockWriteGuard};
 
-// use crossbeam_channel::SendError;
 use crossbeam_channel::{RecvError, SendError};
 use thiserror::Error;
 
@@ -12,9 +11,9 @@ use starknet_devnet_core::error::Error;
 use self::environment::instruction::{Instruction, Outcome};
 use super::*;
 
-/// The error type for `arbiter-core`.
+/// The error type for `starkbiter-core`.
 #[derive(Error, Debug)]
-pub enum ArbiterCoreError {
+pub enum StarkbiterCoreError {
     /// Tried to create an account that already exists.
     #[error("Account already exists!")]
     AccountCreationError,
@@ -99,31 +98,21 @@ pub enum ArbiterCoreError {
     #[error("{0}")]
     RwLockError(String),
 
+    /// Represents an internal error with a message.
+    /// Used to wrap all errors without specific wrapper
     // TODO: remove and make more specific errors.
     #[error("{0}")]
     InternalError(String),
 }
 
-impl From<SendError<Result<Outcome, ArbiterCoreError>>> for ArbiterCoreError {
-    fn from(e: SendError<Result<Outcome, ArbiterCoreError>>) -> Self {
-        ArbiterCoreError::ReplyError(e.to_string())
+impl From<SendError<Result<Outcome, StarkbiterCoreError>>> for StarkbiterCoreError {
+    fn from(e: SendError<Result<Outcome, StarkbiterCoreError>>) -> Self {
+        StarkbiterCoreError::ReplyError(e.to_string())
     }
 }
 
-impl<T> From<PoisonError<RwLockWriteGuard<'_, T>>> for ArbiterCoreError {
+impl<T> From<PoisonError<RwLockWriteGuard<'_, T>>> for StarkbiterCoreError {
     fn from(e: PoisonError<RwLockWriteGuard<'_, T>>) -> Self {
-        ArbiterCoreError::RwLockError(e.to_string())
+        StarkbiterCoreError::RwLockError(e.to_string())
     }
 }
-
-// impl MiddlewareError for ArbiterCoreError {
-//     type Inner = ProviderError;
-
-//     fn from_err(e: Self::Inner) -> Self {
-//         ArbiterCoreError::from(e)
-//     }
-
-//     fn as_inner(&self) -> Option<&Self::Inner> {
-//         None
-//     }
-// }

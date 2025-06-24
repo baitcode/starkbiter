@@ -5,7 +5,7 @@
 #![allow(clippy::all)]
 #![allow(warnings)]
 
-use serde::{Deserialize, Serialize};
+use serde::{self, Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct ArgentAccount<A: starknet::accounts::ConnectedAccount + Sync> {
@@ -192,7 +192,7 @@ impl AccountUpgraded {
         "AccountUpgraded"
     }
 }
-#[derive(PartialEq)]
+#[derive(PartialEq, Serialize, Deserialize)]
 pub struct Call {
     pub to: cainome::cairo_serde::ContractAddress,
     pub selector: starknet::core::types::Felt,
@@ -300,8 +300,13 @@ impl EscapeCanceled {
         "EscapeCanceled"
     }
 }
-#[derive(PartialEq)]
+
+#[derive(PartialEq, Serialize, Deserialize)]
 pub struct EscapeGuardianTriggeredGuid {
+    #[serde(
+        serialize_with = "cainome::cairo_serde::serialize_as_hex",
+        deserialize_with = "cainome::cairo_serde::deserialize_from_hex"
+    )]
     pub ready_at: u64,
     pub new_guardian_guid: starknet::core::types::Felt,
 }
@@ -346,8 +351,12 @@ impl EscapeGuardianTriggeredGuid {
         "EscapeGuardianTriggeredGuid"
     }
 }
-#[derive(PartialEq)]
+#[derive(PartialEq, Serialize, Deserialize)]
 pub struct EscapeOwnerTriggeredGuid {
+    #[serde(
+        serialize_with = "cainome::cairo_serde::serialize_as_hex",
+        deserialize_with = "cainome::cairo_serde::deserialize_from_hex"
+    )]
     pub ready_at: u64,
     pub new_owner_guid: starknet::core::types::Felt,
 }
@@ -392,8 +401,12 @@ impl EscapeOwnerTriggeredGuid {
         "EscapeOwnerTriggeredGuid"
     }
 }
-#[derive(PartialEq)]
+#[derive(PartialEq, Serialize, Deserialize)]
 pub struct EscapeSecurityPeriodChanged {
+    #[serde(
+        serialize_with = "cainome::cairo_serde::serialize_as_hex",
+        deserialize_with = "cainome::cairo_serde::deserialize_from_hex"
+    )]
     pub escape_security_period: u64,
 }
 impl cainome::cairo_serde::CairoSerde for EscapeSecurityPeriodChanged {
@@ -627,8 +640,12 @@ impl GuardianEscapedGuid {
         "GuardianEscapedGuid"
     }
 }
-#[derive(PartialEq)]
+#[derive(PartialEq, Serialize, Deserialize)]
 pub struct LegacyEscape {
+    #[serde(
+        serialize_with = "cainome::cairo_serde::serialize_as_hex",
+        deserialize_with = "cainome::cairo_serde::deserialize_from_hex"
+    )]
     pub ready_at: u64,
     pub escape_type: LegacyEscapeType,
     pub new_signer: Option<SignerStorageValue>,
@@ -671,11 +688,19 @@ impl cainome::cairo_serde::CairoSerde for LegacyEscape {
         })
     }
 }
-#[derive(PartialEq)]
+#[derive(PartialEq, Serialize, Deserialize)]
 pub struct OutsideExecution {
     pub caller: cainome::cairo_serde::ContractAddress,
     pub nonce: starknet::core::types::Felt,
+    #[serde(
+        serialize_with = "cainome::cairo_serde::serialize_as_hex",
+        deserialize_with = "cainome::cairo_serde::deserialize_from_hex"
+    )]
     pub execute_after: u64,
+    #[serde(
+        serialize_with = "cainome::cairo_serde::serialize_as_hex",
+        deserialize_with = "cainome::cairo_serde::deserialize_from_hex"
+    )]
     pub execute_before: u64,
     pub calls: Vec<Call>,
 }
@@ -1034,7 +1059,7 @@ impl SignerLinked {
         "SignerLinked"
     }
 }
-#[derive(PartialEq)]
+#[derive(PartialEq, Serialize, Deserialize)]
 pub struct SignerStorageValue {
     pub stored_value: starknet::core::types::Felt,
     pub signer_type: SignerType,
@@ -2677,7 +2702,7 @@ impl cainome::cairo_serde::CairoSerde for EscapeStatus {
         }
     }
 }
-#[derive(PartialEq)]
+#[derive(PartialEq, Serialize, Deserialize)]
 pub enum LegacyEscapeType {
     None,
     Guardian,
@@ -3192,7 +3217,7 @@ impl cainome::cairo_serde::CairoSerde for SignerSignature {
         }
     }
 }
-#[derive(PartialEq)]
+#[derive(PartialEq, Serialize, Deserialize)]
 pub enum SignerType {
     Starknet,
     Secp256k1,

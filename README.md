@@ -34,6 +34,9 @@ The Starkbiter workspace has five crates:
 - [x] core docs
 - [x] main readme
 - [ ] docs docs
+    - [ ] getting started
+    - [ ] usage
+    - [x] index
 - [ ] benchmarks
 - [ ] python bindings
 - [ ] more test cases, more granular, coverage report

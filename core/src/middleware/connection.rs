@@ -68,7 +68,10 @@ impl Connection {
             .recv()
             // TODO: fix errors
             .map_err(|_| ProviderError::RateLimited)?
-            .map_err(|_| ProviderError::RateLimited)?;
+            .map_err(|e| {
+                trace!("Error from environment outcome. It'll be dropped: {:?}", e);
+                ProviderError::RateLimited
+            })?;
 
         return Ok(res);
     }

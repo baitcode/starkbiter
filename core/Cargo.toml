@@ -50,6 +50,7 @@ tracing.workspace = true
 [dev-dependencies]
 cainome.workspace = true
 starkbiter-bindings.workspace = true
+url.workspace = true
 tracing-subscriber = "0.3.18"
 
 # For bench

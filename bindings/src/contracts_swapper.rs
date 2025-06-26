@@ -204,6 +204,7 @@ impl cainome::cairo_serde::CairoSerde for PoolKey {
 pub struct SwapData {
     pub pool_key: PoolKey,
     pub amount: I129,
+    pub sqrt_ratio_limit: cainome::cairo_serde::U256,
     pub token: cainome::cairo_serde::ContractAddress,
 }
 impl cainome::cairo_serde::CairoSerde for SwapData {
@@ -214,6 +215,7 @@ impl cainome::cairo_serde::CairoSerde for SwapData {
         let mut __size = 0;
         __size += PoolKey::cairo_serialized_size(&__rust.pool_key);
         __size += I129::cairo_serialized_size(&__rust.amount);
+        __size += cainome::cairo_serde::U256::cairo_serialized_size(&__rust.sqrt_ratio_limit);
         __size += cainome::cairo_serde::ContractAddress::cairo_serialized_size(&__rust.token);
         __size
     }
@@ -221,6 +223,9 @@ impl cainome::cairo_serde::CairoSerde for SwapData {
         let mut __out: Vec<starknet::core::types::Felt> = vec![];
         __out.extend(PoolKey::cairo_serialize(&__rust.pool_key));
         __out.extend(I129::cairo_serialize(&__rust.amount));
+        __out.extend(cainome::cairo_serde::U256::cairo_serialize(
+            &__rust.sqrt_ratio_limit,
+        ));
         __out.extend(cainome::cairo_serde::ContractAddress::cairo_serialize(
             &__rust.token,
         ));
@@ -235,11 +240,14 @@ impl cainome::cairo_serde::CairoSerde for SwapData {
         __offset += PoolKey::cairo_serialized_size(&pool_key);
         let amount = I129::cairo_deserialize(__felts, __offset)?;
         __offset += I129::cairo_serialized_size(&amount);
+        let sqrt_ratio_limit = cainome::cairo_serde::U256::cairo_deserialize(__felts, __offset)?;
+        __offset += cainome::cairo_serde::U256::cairo_serialized_size(&sqrt_ratio_limit);
         let token = cainome::cairo_serde::ContractAddress::cairo_deserialize(__felts, __offset)?;
         __offset += cainome::cairo_serde::ContractAddress::cairo_serialized_size(&token);
         Ok(SwapData {
             pool_key,
             amount,
+            sqrt_ratio_limit,
             token,
         })
     }

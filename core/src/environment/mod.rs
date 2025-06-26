@@ -19,14 +19,14 @@
 
 use std::thread::{self, JoinHandle};
 
-use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
+use crossbeam_channel::{bounded, unbounded, Receiver, SendError, Sender};
 use starknet::providers::Url;
-use starknet_core::types::{self as core_types};
+use starknet_core::types::{self as core_types, Hash256};
 use starknet_devnet_core::constants::{self as devnet_constants};
 
 use starknet_devnet_core::error::Error as DevnetError;
 use starknet_devnet_core::starknet::starknet_config::ForkConfig;
-use starknet_devnet_core::state::{CustomState, CustomStateReader};
+use starknet_devnet_core::state::{CustomState, CustomStateReader, StarknetState};
 use starknet_devnet_core::{
     starknet::{starknet_config::StarknetConfig, Starknet},
     state::StateReader,
@@ -329,93 +329,108 @@ async fn process_instructions(
     while let Ok((instruction, sender)) = instruction_receiver.recv() {
         let mut stop = false;
 
-        let result: Result<Outcome, StarkbiterCoreError> = match instruction {
+        if stop {
+            break;
+        }
+
+        match instruction {
             Instruction::Node(ref basic_instruction) => match basic_instruction {
                 NodeInstruction::GetSpecVersion => {
                     trace!("Environment. Received GetSpecVersion instruction");
                     let outcome = Outcome::Node(NodeOutcome::SpecVersion("unknown".to_string()));
-                    Ok(outcome)
+                    // TODO: handle send errors. Probably stop the environment.
+                    sender.send(Ok(outcome));
                 }
                 NodeInstruction::GetBlockWithTxHashes { block_id } => {
                     trace!(
                         "Environment. Received GetBlockWithTxHashes instruction: {:?}",
                         block_id
                     );
-                    let block_result = starknet
+                    let outcome = starknet
                         .get_block_with_transactions(block_id)
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
-
-                    let outcome: core_types::MaybePendingBlockWithTxHashes = match block_result {
-                        BlockResult::PendingBlock(block) => {
-                            core_types::MaybePendingBlockWithTxHashes::PendingBlock(
-                                core_types::PendingBlockWithTxHashes::from(block),
-                            )
-                        }
-                        BlockResult::Block(block) => {
-                            core_types::MaybePendingBlockWithTxHashes::Block(
-                                core_types::BlockWithTxHashes::from(block),
-                            )
-                        }
-                    };
-
-                    Ok(Outcome::Node(NodeOutcome::GetBlockWithTxHashes(outcome)))
+                        .map_err(|err| StarkbiterCoreError::DevnetError(err))
+                        .map(|block_result| {
+                            let outcome: core_types::MaybePendingBlockWithTxHashes =
+                                match block_result {
+                                    BlockResult::PendingBlock(block) => {
+                                        core_types::MaybePendingBlockWithTxHashes::PendingBlock(
+                                            core_types::PendingBlockWithTxHashes::from(block),
+                                        )
+                                    }
+                                    BlockResult::Block(block) => {
+                                        core_types::MaybePendingBlockWithTxHashes::Block(
+                                            core_types::BlockWithTxHashes::from(block),
+                                        )
+                                    }
+                                };
+                            Outcome::Node(NodeOutcome::GetBlockWithTxHashes(outcome))
+                        });
+                    sender.send(outcome);
                 }
                 NodeInstruction::GetBlockWithTxs { block_id } => {
                     trace!(
                         "Environment. Received GetBlockWithTxs instruction: {:?}",
                         block_id
                     );
-                    let block_result = starknet
+                    let outcome = starknet
                         .get_block_with_transactions(&block_id)
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|block_result| {
+                            let outcome: core_types::MaybePendingBlockWithTxs = match block_result {
+                                BlockResult::PendingBlock(block) => {
+                                    core_types::MaybePendingBlockWithTxs::PendingBlock(
+                                        core_types::PendingBlockWithTxs::from(block),
+                                    )
+                                }
+                                BlockResult::Block(block) => {
+                                    core_types::MaybePendingBlockWithTxs::Block(
+                                        core_types::BlockWithTxs::from(block),
+                                    )
+                                }
+                            };
+                            Outcome::Node(NodeOutcome::GetBlockWithTxs(outcome))
+                        });
 
-                    let outcome: core_types::MaybePendingBlockWithTxs = match block_result {
-                        BlockResult::PendingBlock(block) => {
-                            core_types::MaybePendingBlockWithTxs::PendingBlock(
-                                core_types::PendingBlockWithTxs::from(block),
-                            )
-                        }
-                        BlockResult::Block(block) => core_types::MaybePendingBlockWithTxs::Block(
-                            core_types::BlockWithTxs::from(block),
-                        ),
-                    };
-
-                    Ok(Outcome::Node(NodeOutcome::GetBlockWithTxs(outcome)))
+                    sender.send(outcome);
                 }
                 NodeInstruction::GetBlockWithReceipts { block_id } => {
                     trace!(
                         "Environment. Received GetBlockWithReceipts instruction: {:?}",
                         block_id
                     );
-                    let block_result = starknet
+                    let outcome = starknet
                         .get_block_with_receipts(&block_id)
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
-
-                    let outcome: core_types::MaybePendingBlockWithReceipts = match block_result {
-                        BlockResult::PendingBlock(block) => {
-                            core_types::MaybePendingBlockWithReceipts::PendingBlock(
-                                core_types::PendingBlockWithReceipts::from(block),
-                            )
-                        }
-                        BlockResult::Block(block) => {
-                            core_types::MaybePendingBlockWithReceipts::Block(
-                                core_types::BlockWithReceipts::from(block),
-                            )
-                        }
-                    };
-
-                    Ok(Outcome::Node(NodeOutcome::GetBlockWithReceipts(outcome)))
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|block_result| {
+                            let outcome: core_types::MaybePendingBlockWithReceipts =
+                                match block_result {
+                                    BlockResult::PendingBlock(block) => {
+                                        core_types::MaybePendingBlockWithReceipts::PendingBlock(
+                                            core_types::PendingBlockWithReceipts::from(block),
+                                        )
+                                    }
+                                    BlockResult::Block(block) => {
+                                        core_types::MaybePendingBlockWithReceipts::Block(
+                                            core_types::BlockWithReceipts::from(block),
+                                        )
+                                    }
+                                };
+                            Outcome::Node(NodeOutcome::GetBlockWithReceipts(outcome))
+                        });
+                    sender.send(outcome);
                 }
                 NodeInstruction::GetStateUpdate { block_id } => {
                     trace!(
                         "Environment. Received GetStateUpdate instruction: {:?}",
                         block_id
                     );
-                    let res = starknet
-                        .block_state_update(block_id)
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
 
-                    Ok(Outcome::Node(NodeOutcome::GetStateUpdate(res.into())))
+                    let outcome = starknet
+                        .block_state_update(block_id)
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|res| Outcome::Node(NodeOutcome::GetStateUpdate(res.into())));
+
+                    sender.send(outcome);
                 }
                 NodeInstruction::GetStorageAt {
                     contract_address,
@@ -431,66 +446,95 @@ async fn process_instructions(
                     );
                     let state = starknet.get_state();
 
-                    let contract_address = api_core::ContractAddress::try_from(*contract_address)
-                        .map_err(|e| {
-                        StarkbiterCoreError::DevnetError(DevnetError::StarknetApiError(e))
-                    })?;
+                    let contract_address = api_core::ContractAddress::try_from(*contract_address);
 
-                    let storage_key = StorageKey::try_from(*key).map_err(|e| {
-                        StarkbiterCoreError::DevnetError(DevnetError::StarknetApiError(e))
-                    })?;
+                    if let Err(err) = contract_address {
+                        sender.send(Err(StarkbiterCoreError::DevnetError(
+                            DevnetError::StarknetApiError(err),
+                        )));
+                        continue;
+                    }
+
+                    let storage_key = StorageKey::try_from(*key);
+
+                    if let Err(err) = storage_key {
+                        sender.send(Err(StarkbiterCoreError::DevnetError(
+                            DevnetError::StarknetApiError(err),
+                        )));
+                        continue;
+                    }
 
                     let outcome = state
-                        .get_storage_at(contract_address, storage_key)
+                        .get_storage_at(contract_address.unwrap(), storage_key.unwrap())
                         .map_err(|e| {
                             StarkbiterCoreError::DevnetError(DevnetError::BlockifierStateError(e))
-                        })?;
+                        })
+                        .map(|value| Outcome::Node(NodeOutcome::GetStorageAt(value)));
 
-                    Ok(Outcome::Node(NodeOutcome::GetStorageAt(outcome)))
+                    sender.send(outcome);
                 }
                 NodeInstruction::GetMessagesStatus { transaction_hash } => {
                     trace!(
                         "Environment. Received GetMessagesStatus instruction: {:?}",
                         transaction_hash
                     );
+
                     let outcome = starknet
                         .get_messages_status(*transaction_hash)
-                        .unwrap_or(Vec::new());
-                    Ok(Outcome::Node(NodeOutcome::GetMessagesStatus(
-                        outcome.iter().map(Into::into).collect(),
-                    )))
+                        .map(|status| {
+                            Outcome::Node(NodeOutcome::GetMessagesStatus(
+                                status.iter().map(Into::into).collect(),
+                            ))
+                        })
+                        .unwrap_or(Outcome::Node(NodeOutcome::GetMessagesStatus(vec![])));
+
+                    sender.send(Ok(outcome));
                 }
                 NodeInstruction::GetTransactionStatus { transaction_hash } => {
                     trace!(
                         "Environment. Received GetTransactionStatus instruction: {:?}",
                         transaction_hash
                     );
-                    let transaction_hash = core_types::Felt::try_from(transaction_hash)
-                        .map_err(|e| StarkbiterCoreError::InternalError(e.to_string()))?;
 
-                    let outcome = starknet
-                        .get_transaction_execution_and_finality_status(transaction_hash)
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
+                    let hash = core_types::Felt::try_from(transaction_hash);
 
-                    Ok(Outcome::Node(NodeOutcome::GetTransactionStatus(
-                        outcome.into(),
-                    )))
+                    if let Err(e) = hash {
+                        sender.send(Err(StarkbiterCoreError::InternalError(e.to_string())));
+                        continue;
+                    }
+
+                    let result = starknet
+                        .get_transaction_execution_and_finality_status(hash.unwrap())
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|status| {
+                            Outcome::Node(NodeOutcome::GetTransactionStatus(status.into()))
+                        });
+
+                    sender.send(result);
                 }
                 NodeInstruction::GetTransactionByHash { transaction_hash } => {
                     trace!(
                         "Environment. Received GetTransactionByHash instruction: {:?}",
                         transaction_hash
                     );
-                    let transaction_hash = core_types::Felt::try_from(transaction_hash)
-                        .map_err(|e| StarkbiterCoreError::InternalError(e.to_string()))?;
 
-                    let transaction = starknet
-                        .get_transaction_by_hash(transaction_hash)
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
+                    let hash = core_types::Felt::try_from(transaction_hash);
 
-                    Ok(Outcome::Node(NodeOutcome::GetTransactionByHash(
-                        core_types::Transaction::from(transaction.clone()),
-                    )))
+                    if let Err(e) = hash {
+                        sender.send(Err(StarkbiterCoreError::InternalError(e.to_string())));
+                        continue;
+                    }
+
+                    let result = starknet
+                        .get_transaction_by_hash(hash.unwrap())
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|transaction| {
+                            Outcome::Node(NodeOutcome::GetTransactionByHash(
+                                core_types::Transaction::from(transaction.clone()),
+                            ))
+                        });
+
+                    sender.send(result);
                 }
                 NodeInstruction::GetTransactionByBlockIdAndIndex { block_id, index } => {
                     trace!(
@@ -498,29 +542,41 @@ async fn process_instructions(
                         block_id,
                         index
                     );
-                    let transaction = starknet
-                        .get_transaction_by_block_id_and_index(&block_id, *index)
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
 
-                    Ok(Outcome::Node(NodeOutcome::GetTransactionByBlockIdAndIndex(
-                        core_types::Transaction::from(transaction.clone()),
-                    )))
+                    let result = starknet
+                        .get_transaction_by_block_id_and_index(&block_id, *index)
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|tx| {
+                            Outcome::Node(NodeOutcome::GetTransactionByBlockIdAndIndex(
+                                core_types::Transaction::from(tx.clone()),
+                            ))
+                        });
+
+                    sender.send(result);
                 }
                 NodeInstruction::GetTransactionReceipt { transaction_hash } => {
                     trace!(
                         "Environment. Received GetTransactionReceipt instruction: {:?}",
                         transaction_hash
                     );
-                    let transaction_hash = core_types::Felt::try_from(transaction_hash)
-                        .map_err(|e| StarkbiterCoreError::InternalError(e.to_string()))?;
 
-                    let receipt = starknet
-                        .get_transaction_receipt_by_hash(&transaction_hash)
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
+                    let hash = core_types::Felt::try_from(transaction_hash);
 
-                    Ok(Outcome::Node(NodeOutcome::GetTransactionReceipt(
-                        core_types::TransactionReceiptWithBlockInfo::from(receipt),
-                    )))
+                    if let Err(e) = hash {
+                        sender.send(Err(StarkbiterCoreError::InternalError(e.to_string())));
+                        continue;
+                    }
+
+                    let result = starknet
+                        .get_transaction_receipt_by_hash(&hash.unwrap())
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|receipt| {
+                            Outcome::Node(NodeOutcome::GetTransactionReceipt(
+                                core_types::TransactionReceiptWithBlockInfo::from(receipt),
+                            ))
+                        });
+
+                    sender.send(result);
                 }
                 NodeInstruction::GetClass {
                     block_id,
@@ -531,15 +587,19 @@ async fn process_instructions(
                         block_id,
                         class_hash
                     );
-                    let klass = starknet
-                        .get_class(&block_id, *class_hash)
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
 
-                    Ok(Outcome::Node(NodeOutcome::GetClass(
-                        klass.try_into().map_err(|e: Error| {
-                            StarkbiterCoreError::InternalError(e.to_string())
-                        })?,
-                    )))
+                    let result = starknet
+                        .get_class(&block_id, *class_hash)
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|klass| {
+                            Outcome::Node(NodeOutcome::GetClass(
+                                klass
+                                    .try_into()
+                                    .expect("Could not convert between ContractClasses"),
+                            ))
+                        });
+
+                    sender.send(result);
                 }
                 NodeInstruction::GetClassHashAt {
                     block_id,
@@ -551,14 +611,19 @@ async fn process_instructions(
                         contract_address
                     );
 
-                    let contract_address =
-                        ContractAddress::new(*contract_address).expect("Should always work");
+                    let contract_address = ContractAddress::new(*contract_address);
 
-                    let class_hash = starknet
-                        .get_class_hash_at(&block_id, contract_address)
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
+                    if let Err(e) = contract_address {
+                        sender.send(Err(StarkbiterCoreError::InternalError(e.to_string())));
+                        continue;
+                    }
 
-                    Ok(Outcome::Node(NodeOutcome::GetClassHashAt(class_hash)))
+                    let result = starknet
+                        .get_class_hash_at(&block_id, contract_address.unwrap())
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|class_hash| Outcome::Node(NodeOutcome::GetClassHashAt(class_hash)));
+
+                    sender.send(result);
                 }
                 NodeInstruction::GetClassAt {
                     block_id,
@@ -573,15 +638,18 @@ async fn process_instructions(
                     let contract_address =
                         ContractAddress::new(*contract_address).expect("Should always work");
 
-                    let contract_class = starknet
+                    let result = starknet
                         .get_class_at(&block_id, contract_address)
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|contract_class| {
+                            Outcome::Node(NodeOutcome::GetClassAt(
+                                contract_class
+                                    .try_into()
+                                    .expect("Convert between contract classes"),
+                            ))
+                        });
 
-                    Ok(Outcome::Node(NodeOutcome::GetClassAt(
-                        contract_class.try_into().map_err(|e: Error| {
-                            StarkbiterCoreError::InternalError(e.to_string())
-                        })?,
-                    )))
+                    sender.send(result);
                 }
                 NodeInstruction::GetBlockTransactionCount { block_id } => {
                     trace!(
@@ -589,46 +657,54 @@ async fn process_instructions(
                         block_id
                     );
 
-                    let count = starknet
+                    let result = starknet
                         .get_block_txs_count(&block_id)
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|count| Outcome::Node(NodeOutcome::GetBlockTransactionCount(count)));
 
-                    Ok(Outcome::Node(NodeOutcome::GetBlockTransactionCount(count)))
+                    sender.send(result);
                 }
                 NodeInstruction::BlockNumber => {
                     trace!("Environment. Received BlockNumber instruction");
 
-                    let block = starknet
+                    let result = starknet
                         .get_latest_block()
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|block| {
+                            Outcome::Node(NodeOutcome::BlockNumber(block.block_number().0))
+                        });
 
-                    Ok(Outcome::Node(NodeOutcome::BlockNumber(
-                        block.block_number().0,
-                    )))
+                    sender.send(result);
                 }
                 NodeInstruction::BlockHashAndNumber => {
                     trace!("Environment. Received BlockHashAndNumber instruction");
 
-                    let block = starknet
+                    let result = starknet
                         .get_latest_block()
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|block| {
+                            Outcome::Node(NodeOutcome::BlockHashAndNumber(
+                                core_types::BlockHashAndNumber {
+                                    block_hash: block.block_hash(),
+                                    block_number: block.block_number().0,
+                                },
+                            ))
+                        });
 
-                    Ok(Outcome::Node(NodeOutcome::BlockHashAndNumber(
-                        core_types::BlockHashAndNumber {
-                            block_hash: block.block_hash(),
-                            block_number: block.block_number().0,
-                        },
-                    )))
+                    sender.send(result);
                 }
                 NodeInstruction::ChainId => {
                     trace!("Environment. Received ChainId instruction");
 
                     let chain_id = starknet_config.chain_id;
-                    Ok(Outcome::Node(NodeOutcome::ChainId(chain_id.into())))
+                    sender.send(Ok(Outcome::Node(NodeOutcome::ChainId(chain_id.into()))));
                 }
-                NodeInstruction::Syncing => Ok(Outcome::Node(NodeOutcome::Syncing(
-                    core_types::SyncStatusType::NotSyncing,
-                ))),
+                NodeInstruction::Syncing => {
+                    let result = Ok(Outcome::Node(NodeOutcome::Syncing(
+                        core_types::SyncStatusType::NotSyncing,
+                    )));
+                    sender.send(result);
+                }
                 NodeInstruction::GetEvents {
                     filter,
                     continuation_token,
@@ -642,8 +718,7 @@ async fn process_instructions(
                     );
 
                     let skip = if let Some(s) = continuation_token {
-                        s.parse::<u64>()
-                            .expect("Continuation token should be a valid u64")
+                        s.parse::<u64>().unwrap_or(0)
                     } else {
                         0
                     };
@@ -654,7 +729,7 @@ async fn process_instructions(
                         50_usize // TODO: Default chunk size. Move to config
                     };
 
-                    let (events, _) = starknet
+                    let result = starknet
                         .get_events(
                             filter.from_block,
                             filter.to_block,
@@ -668,20 +743,23 @@ async fn process_instructions(
                             skip.try_into().expect("Skip should be a valid usize"),
                             Some(chunk_size),
                         )
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|(events, _)| {
+                            let continuation_token = if events.len() < chunk_size {
+                                Option::None
+                            } else {
+                                Option::Some(format!("{}", skip + events.len() as u64))
+                            };
 
-                    let continuation_token = if events.len() < chunk_size {
-                        Option::None
-                    } else {
-                        Option::Some(format!("{}", skip + events.len() as u64))
-                    };
+                            let page = core_types::EventsPage {
+                                events: events.iter().map(|e| e.into()).collect(),
+                                continuation_token,
+                            };
 
-                    let page = core_types::EventsPage {
-                        events: events.iter().map(|e| e.into()).collect(),
-                        continuation_token,
-                    };
+                            Outcome::Node(NodeOutcome::GetEvents(page))
+                        });
 
-                    Ok(Outcome::Node(NodeOutcome::GetEvents(page)))
+                    sender.send(result);
                 }
                 NodeInstruction::Call { request, block_id } => {
                     trace!(
@@ -690,18 +768,17 @@ async fn process_instructions(
                         block_id
                     );
 
-                    let res = starknet
+                    let result = starknet
                         .call(
                             block_id,
                             request.contract_address,
                             request.entry_point_selector,
                             request.calldata.clone(),
                         )
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|res| Outcome::Node(NodeOutcome::Call(res)));
 
-                    trace!("Environment. Call res: {:?} ", res);
-
-                    Ok(Outcome::Node(NodeOutcome::Call(res)))
+                    sender.send(result);
                 }
                 NodeInstruction::AddInvokeTransaction { transaction } => {
                     trace!(
@@ -712,15 +789,18 @@ async fn process_instructions(
                     let converted_transaction =
                         BroadcastedInvokeTransaction::V3(transaction.clone().into());
 
-                    let tx_hash = starknet
+                    let result = starknet
                         .add_invoke_transaction(converted_transaction)
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|tx_hash| {
+                            Outcome::Node(NodeOutcome::AddInvokeTransaction(
+                                core_types::InvokeTransactionResult {
+                                    transaction_hash: tx_hash,
+                                },
+                            ))
+                        });
 
-                    Ok(Outcome::Node(NodeOutcome::AddInvokeTransaction(
-                        core_types::InvokeTransactionResult {
-                            transaction_hash: tx_hash,
-                        },
-                    )))
+                    sender.send(result);
                 }
                 NodeInstruction::AddDeclareTransaction { transaction } => {
                     trace!(
@@ -728,18 +808,21 @@ async fn process_instructions(
                         transaction
                     );
 
-                    let (tx_hash, class_hash) = starknet
+                    let result = starknet
                         .add_declare_transaction(BroadcastedDeclareTransaction::V3(Box::new(
                             transaction.clone().into(),
                         )))
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|(tx_hash, class_hash)| {
+                            Outcome::Node(NodeOutcome::AddDeclareTransaction(
+                                core_types::DeclareTransactionResult {
+                                    transaction_hash: tx_hash,
+                                    class_hash,
+                                },
+                            ))
+                        });
 
-                    Ok(Outcome::Node(NodeOutcome::AddDeclareTransaction(
-                        core_types::DeclareTransactionResult {
-                            transaction_hash: tx_hash,
-                            class_hash,
-                        },
-                    )))
+                    sender.send(result);
                 }
                 NodeInstruction::AddDeployAccountTransaction { transaction } => {
                     trace!(
@@ -747,18 +830,21 @@ async fn process_instructions(
                         transaction
                     );
 
-                    let (tx_hash, contract_address) = starknet
+                    let result = starknet
                         .add_deploy_account_transaction(BroadcastedDeployAccountTransaction::V3(
                             transaction.clone().into(),
                         ))
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|(tx_hash, contract_address)| {
+                            Outcome::Node(NodeOutcome::AddDeployAccountTransaction(
+                                core_types::DeployAccountTransactionResult {
+                                    transaction_hash: tx_hash,
+                                    contract_address: core_types::Felt::from(contract_address),
+                                },
+                            ))
+                        });
 
-                    Ok(Outcome::Node(NodeOutcome::AddDeployAccountTransaction(
-                        core_types::DeployAccountTransactionResult {
-                            transaction_hash: tx_hash,
-                            contract_address: core_types::Felt::from(contract_address),
-                        },
-                    )))
+                    sender.send(result);
                 }
                 NodeInstruction::TraceTransaction { transaction_hash } => {
                     trace!(
@@ -766,11 +852,12 @@ async fn process_instructions(
                         transaction_hash
                     );
 
-                    let trace = starknet
+                    let result = starknet
                         .get_transaction_trace_by_hash(*transaction_hash)
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|trace| Outcome::Node(NodeOutcome::TraceTransaction(trace.into())));
 
-                    Ok(Outcome::Node(NodeOutcome::TraceTransaction(trace.into())))
+                    sender.send(result);
                 }
                 NodeInstruction::SimulateTransactions {
                     block_id,
@@ -784,7 +871,7 @@ async fn process_instructions(
                         simulation_flags
                     );
 
-                    let res = starknet
+                    let result = starknet
                         .simulate_transactions(
                             &block_id,
                             transactions
@@ -795,10 +882,14 @@ async fn process_instructions(
                                 .as_slice(),
                             simulation_flags.iter().cloned().map(Into::into).collect(),
                         )
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
-                    Ok(Outcome::Node(NodeOutcome::SimulateTransactions(
-                        res.iter().cloned().map(Into::into).collect(),
-                    )))
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|res| {
+                            Outcome::Node(NodeOutcome::SimulateTransactions(
+                                res.iter().cloned().map(Into::into).collect(),
+                            ))
+                        });
+
+                    sender.send(result);
                 }
                 NodeInstruction::TraceBlockTransactions { block_id } => {
                     trace!(
@@ -806,13 +897,16 @@ async fn process_instructions(
                         block_id
                     );
 
-                    let res = starknet
+                    let result = starknet
                         .get_transaction_traces_from_block(&block_id)
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|res| {
+                            Outcome::Node(NodeOutcome::TraceBlockTransactions(
+                                res.iter().cloned().map(Into::into).collect(),
+                            ))
+                        });
 
-                    Ok(Outcome::Node(NodeOutcome::TraceBlockTransactions(
-                        res.iter().cloned().map(Into::into).collect(),
-                    )))
+                    sender.send(result);
                 }
                 NodeInstruction::EstimateFee {
                     request,
@@ -833,13 +927,17 @@ async fn process_instructions(
                         .map(|f| SimulationFlag::from(*f))
                         .collect::<Vec<_>>();
 
-                    let fees = starknet
-                        .estimate_fee(&block_id, txs, &simulation_flags.as_slice())
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
+                    let fees_result =
+                        starknet.estimate_fee(&block_id, txs, &simulation_flags.as_slice());
 
-                    Ok(Outcome::Node(NodeOutcome::EstimateFee(
-                        fees.iter().cloned().map(Into::into).collect(),
-                    )))
+                    let result = match fees_result {
+                        Err(e) => Err(StarkbiterCoreError::DevnetError(e)),
+                        Ok(fees) => Ok(Outcome::Node(NodeOutcome::EstimateFee(
+                            fees.iter().cloned().map(Into::into).collect(),
+                        ))),
+                    };
+
+                    sender.send(result);
                 }
                 NodeInstruction::EstimateMessageFee { message, block_id } => {
                     trace!(
@@ -848,11 +946,12 @@ async fn process_instructions(
                         block_id
                     );
 
-                    let fee = starknet
+                    let result = starknet
                         .estimate_message_fee(&block_id, message.clone())
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|fee| Outcome::Node(NodeOutcome::EstimateMessageFee(fee.into())));
 
-                    Ok(Outcome::Node(NodeOutcome::EstimateMessageFee(fee.into())))
+                    sender.send(result);
                 }
                 NodeInstruction::GetNonce {
                     block_id,
@@ -867,56 +966,78 @@ async fn process_instructions(
                     let contract_address =
                         ContractAddress::new(*contract_address).expect("Should always work.");
 
-                    let nonce = starknet
+                    let result = starknet
                         .contract_nonce_at_block(&block_id, contract_address)
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|nonce| Outcome::Node(NodeOutcome::GetNonce(nonce.into())));
 
-                    Ok(Outcome::Node(NodeOutcome::GetNonce(nonce.into())))
+                    sender.send(result);
                 }
             },
             Instruction::Cheat(ref cheat_instruction) => match cheat_instruction {
                 instruction::CheatInstruction::SetNextBlockGas { gas_modification } => {
                     trace!("Environment. Received SetNextBlockGas instruction");
 
-                    let modification = starknet
+                    let result = starknet
                         .set_next_block_gas(gas_modification.clone())
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|modification| {
+                            Outcome::Cheat(instruction::CheatcodesReturn::SetNextBlockGas(
+                                modification,
+                            ))
+                        });
 
-                    Ok(Outcome::Cheat(
-                        instruction::CheatcodesReturn::SetNextBlockGas(modification),
-                    ))
+                    sender.send(result);
                 }
                 instruction::CheatInstruction::DeclareContract { sierra_json } => {
                     trace!("Environment. Received DeclareContract instruction: ",);
 
-                    let contract_class = ContractClass::cairo_1_from_sierra_json_str(&sierra_json)
-                        .map_err(|e| StarkbiterCoreError::InternalError(e.to_string()))?;
+                    let contract_class = ContractClass::cairo_1_from_sierra_json_str(&sierra_json);
 
-                    let sierra_contract_class = ContractClass::Cairo1(contract_class);
+                    if let Err(err) = contract_class {
+                        sender.send(Err(StarkbiterCoreError::InternalError(err.to_string())));
+                        continue;
+                    }
 
-                    let class_hash = sierra_contract_class
-                        .generate_hash()
-                        .map_err(|e| StarkbiterCoreError::InternalError(e.to_string()))?;
+                    let sierra_contract_class = ContractClass::Cairo1(contract_class.unwrap());
+                    let class_hash_result = sierra_contract_class.generate_hash();
+
+                    if let Err(err) = class_hash_result {
+                        sender.send(Err(StarkbiterCoreError::InternalError(err.to_string())));
+                        continue;
+                    }
+
+                    let class_hash = class_hash_result.unwrap();
 
                     trace!("Class hash generated: {:?}", class_hash);
-
                     let state = starknet.get_state();
 
                     if !state.is_contract_declared(class_hash) {
-                        state
-                            .predeclare_contract_class(class_hash, sierra_contract_class.clone())?;
                         trace!("Contract class predeclared");
+
+                        let declare_result = state
+                            .predeclare_contract_class(class_hash, sierra_contract_class.clone());
+
+                        if let Err(e) = declare_result {
+                            sender.send(Err(StarkbiterCoreError::InternalError(e.to_string())));
+                            continue;
+                        }
                     }
 
-                    starknet
+                    let commit_result = starknet
                         .commit_diff()
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e.into()))?;
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e.into()));
+
+                    if let Err(e) = commit_result {
+                        sender.send(Err(e));
+                        continue;
+                    }
 
                     let class_hash = api_core::ClassHash(class_hash);
 
-                    Ok(Outcome::Cheat(
+                    sender.send(Ok(Outcome::Cheat(
                         instruction::CheatcodesReturn::DeclareContract(class_hash.0),
-                    ))
+                    )));
                 }
                 instruction::CheatInstruction::CreateAccount {
                     signing_key,
@@ -942,8 +1063,14 @@ async fn process_instructions(
                         api_core::ClassHash(*class_hash),
                         &Calldata(Arc::new(calldata_felts.clone())),
                         0_u128.into(),
-                    )
-                    .map_err(|e| StarkbiterCoreError::DevnetError(e.into()))?;
+                    );
+
+                    if let Err(e) = account_address {
+                        sender.send(Err(StarkbiterCoreError::DevnetError(
+                            DevnetError::StarknetApiError(e),
+                        )));
+                        continue;
+                    }
 
                     let is_account_contract_declared = {
                         let state = starknet.get_state();
@@ -957,102 +1084,106 @@ async fn process_instructions(
                         utils::mint_tokens_in_erc20_contract(
                             &mut state,
                             devnet_constants::STRK_ERC20_CONTRACT_ADDRESS,
-                            account_address.into(),
+                            account_address.unwrap().into(),
                             prefunded_balance.clone(),
-                        )?;
-                        starknet.commit_diff()?;
+                        );
+                        starknet.commit_diff();
                     }
 
                     if !is_account_contract_declared {
-                        Err(StarkbiterCoreError::DevnetError(
+                        sender.send(Err(StarkbiterCoreError::DevnetError(
                             DevnetError::ContractClassLoadError("Not declared".to_string()),
-                        ))
-                    } else {
-                        let mut tx = starknet_api::transaction::DeployAccountTransactionV3 {
-                            resource_bounds:
-                                starknet_api::transaction::fields::ValidResourceBounds::AllResources(
-                                    starknet_api::transaction::fields::AllResourceBounds {
-                                        l1_gas: starknet_api::transaction::fields::ResourceBounds {
-                                            max_amount:
-                                                starknet_api::execution_resources::GasAmount(
-                                                    1000000,
-                                                ),
-                                            max_price_per_unit: starknet_api::block::GasPrice(1),
-                                        },
-                                        l1_data_gas:
-                                            starknet_api::transaction::fields::ResourceBounds {
-                                                max_amount:
-                                                    starknet_api::execution_resources::GasAmount(
-                                                        1000000,
-                                                    ),
-                                                max_price_per_unit: starknet_api::block::GasPrice(
-                                                    1,
-                                                ),
-                                            },
-                                        l2_gas: starknet_api::transaction::fields::ResourceBounds {
-                                            max_amount:
-                                                starknet_api::execution_resources::GasAmount(
-                                                    1000000,
-                                                ),
-                                            max_price_per_unit: starknet_api::block::GasPrice(1),
-                                        },
-                                    },
-                                ),
-                            tip: starknet_api::transaction::fields::Tip(0),
-                            signature: starknet_api::transaction::fields::TransactionSignature(
-                                vec![],
-                            ),
-                            nonce: starknet_api::core::Nonce(core_types::Felt::ZERO),
-                            class_hash: starknet_api::core::ClassHash(*class_hash),
-                            contract_address_salt:
-                                starknet_api::transaction::fields::ContractAddressSalt(salt),
-                            constructor_calldata: starknet_api::transaction::fields::Calldata(
-                                Arc::new(calldata_felts.clone()),
-                            ),
-                            nonce_data_availability_mode:
-                                starknet_api::data_availability::DataAvailabilityMode::L2,
-                            fee_data_availability_mode:
-                                starknet_api::data_availability::DataAvailabilityMode::L2,
-                            paymaster_data: starknet_api::transaction::fields::PaymasterData(
-                                vec![],
-                            ),
-                        };
-
-                        let hash = tx
-                            .calculate_transaction_hash(
-                                &starknet_config.chain_id.into(),
-                                &starknet_api::transaction::TransactionVersion::THREE,
-                            )
-                            .unwrap();
-
-                        let signature = signing_key.sign(&hash).unwrap();
-
-                        tx.signature =
-                            starknet_api::transaction::fields::TransactionSignature(vec![
-                                signature.r,
-                                signature.s,
-                            ]);
-
-                        let tx = BroadcastedDeployAccountTransactionV3::from(tx);
-
-                        let _ = starknet.add_deploy_account_transaction(
-                            BroadcastedDeployAccountTransaction::V3(tx),
-                        );
-                        // TODO(baitcode): check for result
-
-                        Ok(Outcome::Cheat(
-                            instruction::CheatcodesReturn::CreateAccount(account_address.into()),
-                        ))
+                        )));
+                        continue;
                     }
+
+                    let mut tx = starknet_api::transaction::DeployAccountTransactionV3 {
+                        resource_bounds:
+                            starknet_api::transaction::fields::ValidResourceBounds::AllResources(
+                                starknet_api::transaction::fields::AllResourceBounds {
+                                    l1_gas: starknet_api::transaction::fields::ResourceBounds {
+                                        max_amount: starknet_api::execution_resources::GasAmount(
+                                            1000000,
+                                        ),
+                                        max_price_per_unit: starknet_api::block::GasPrice(1),
+                                    },
+                                    l1_data_gas:
+                                        starknet_api::transaction::fields::ResourceBounds {
+                                            max_amount:
+                                                starknet_api::execution_resources::GasAmount(
+                                                    1000000,
+                                                ),
+                                            max_price_per_unit: starknet_api::block::GasPrice(1),
+                                        },
+                                    l2_gas: starknet_api::transaction::fields::ResourceBounds {
+                                        max_amount: starknet_api::execution_resources::GasAmount(
+                                            1000000,
+                                        ),
+                                        max_price_per_unit: starknet_api::block::GasPrice(1),
+                                    },
+                                },
+                            ),
+                        tip: starknet_api::transaction::fields::Tip(0),
+                        signature: starknet_api::transaction::fields::TransactionSignature(vec![]),
+                        nonce: starknet_api::core::Nonce(core_types::Felt::ZERO),
+                        class_hash: starknet_api::core::ClassHash(*class_hash),
+                        contract_address_salt:
+                            starknet_api::transaction::fields::ContractAddressSalt(salt),
+                        constructor_calldata: starknet_api::transaction::fields::Calldata(
+                            Arc::new(calldata_felts.clone()),
+                        ),
+                        nonce_data_availability_mode:
+                            starknet_api::data_availability::DataAvailabilityMode::L2,
+                        fee_data_availability_mode:
+                            starknet_api::data_availability::DataAvailabilityMode::L2,
+                        paymaster_data: starknet_api::transaction::fields::PaymasterData(vec![]),
+                    };
+
+                    let hash = tx.calculate_transaction_hash(
+                        &starknet_config.chain_id.into(),
+                        &starknet_api::transaction::TransactionVersion::THREE,
+                    );
+
+                    if let Err(e) = hash {
+                        sender.send(Err(StarkbiterCoreError::DevnetError(
+                            DevnetError::StarknetApiError(e),
+                        )));
+                        continue;
+                    }
+
+                    let signature = signing_key.sign(&hash.unwrap()).unwrap();
+
+                    tx.signature = starknet_api::transaction::fields::TransactionSignature(vec![
+                        signature.r,
+                        signature.s,
+                    ]);
+
+                    let tx = BroadcastedDeployAccountTransactionV3::from(tx);
+
+                    let result = starknet
+                        .add_deploy_account_transaction(BroadcastedDeployAccountTransaction::V3(tx))
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|(_, address)| {
+                            Outcome::Cheat(instruction::CheatcodesReturn::CreateAccount(
+                                address.into(),
+                            ))
+                        });
+
+                    sender.send(result);
                 }
                 instruction::CheatInstruction::CreateBlock => {
                     trace!("Environment. Received CreateBlock instruction");
 
                     let block = starknet.get_latest_block().unwrap();
 
-                    starknet
+                    let create_block_result = starknet
                         .create_block()
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e));
+
+                    if let Err(e) = create_block_result {
+                        sender.send(Err(e));
+                        continue;
+                    }
 
                     let events = starknet
                         .get_unlimited_events(
@@ -1061,16 +1192,24 @@ async fn process_instructions(
                             None,
                             None,
                         )
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e));
+
+                    if let Err(e) = events {
+                        sender.send(Err(e));
+                        continue;
+                    }
 
                     let converted = events
+                        .unwrap()
                         .iter()
                         .map(|e| core_types::EmittedEvent::from(e))
                         .collect();
 
                     event_broadcaster.send(converted).unwrap_or_default();
 
-                    Ok(Outcome::Cheat(instruction::CheatcodesReturn::CreateBlock))
+                    sender.send(Ok(Outcome::Cheat(
+                        instruction::CheatcodesReturn::CreateBlock,
+                    )));
                 }
                 instruction::CheatInstruction::L1Message {
                     l1_handler_transaction,
@@ -1082,10 +1221,10 @@ async fn process_instructions(
 
                     let res = starknet
                         .add_l1_handler_transaction(l1_handler_transaction.clone())
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
-                    Ok(Outcome::Cheat(instruction::CheatcodesReturn::L1Message(
-                        res,
-                    )))
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|res| Outcome::Cheat(instruction::CheatcodesReturn::L1Message(res)));
+
+                    sender.send(res);
                 }
                 instruction::CheatInstruction::TopUpBalance {
                     receiver,
@@ -1101,24 +1240,41 @@ async fn process_instructions(
 
                     let mut state = starknet.get_state();
 
-                    let receiver = ContractAddress::new(receiver.clone())
-                        .map_err(|e| StarkbiterCoreError::InternalError(e.to_string()))?;
+                    let receiver = ContractAddress::new(receiver.clone());
+                    if let Err(e) = receiver {
+                        sender.send(Err(StarkbiterCoreError::InternalError(e.to_string())));
+                        continue;
+                    }
 
-                    let token_data = get_token_data(&starknet_config.chain_id, token)
-                        .map_err(|e| StarkbiterCoreError::InternalError(e.to_string()))?;
+                    let token_data = get_token_data(&starknet_config.chain_id, token);
+                    if let Err(e) = token_data {
+                        sender.send(Err(StarkbiterCoreError::InternalError(e.to_string())));
+                        continue;
+                    }
 
                     // NOTE: this strategy might not work for all tokens. l2 message strategy should work.
                     // But probably it's better to be implemented on higher level.
-                    utils::mint_tokens_in_erc20_contract(
+                    let mint_result = utils::mint_tokens_in_erc20_contract(
                         &mut state,
-                        token_data.l2_token_address,
-                        receiver.into(),
+                        token_data.unwrap().l2_token_address,
+                        receiver.unwrap().into(),
                         amount.clone(),
-                    )?;
+                    );
 
-                    starknet.commit_diff()?;
+                    if let Err(e) = mint_result {
+                        sender.send(Err(e));
+                        continue;
+                    }
 
-                    Ok(Outcome::Cheat(instruction::CheatcodesReturn::TopUpBalance))
+                    let res = starknet.commit_diff();
+                    if let Err(e) = res {
+                        sender.send(Err(StarkbiterCoreError::DevnetError(e)));
+                        continue;
+                    }
+
+                    sender.send(Ok(Outcome::Cheat(
+                        instruction::CheatcodesReturn::TopUpBalance,
+                    )));
                 }
                 instruction::CheatInstruction::Impersonate { address } => {
                     trace!(
@@ -1126,11 +1282,12 @@ async fn process_instructions(
                         address
                     );
 
-                    starknet
+                    let result = starknet
                         .impersonate_account(ContractAddress::new(address.clone()).unwrap())
-                        .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
+                        .map_err(|e| StarkbiterCoreError::DevnetError(e))
+                        .map(|_| Outcome::Cheat(instruction::CheatcodesReturn::Impersonate));
 
-                    Ok(Outcome::Cheat(instruction::CheatcodesReturn::Impersonate))
+                    sender.send(result);
                 }
                 instruction::CheatInstruction::StopImpersonating { address } => {
                     trace!(
@@ -1142,9 +1299,9 @@ async fn process_instructions(
                         &ContractAddress::new(address.clone()).unwrap(),
                     );
 
-                    Ok(Outcome::Cheat(
+                    sender.send(Ok(Outcome::Cheat(
                         instruction::CheatcodesReturn::StopImpersonating,
-                    ))
+                    )));
                 }
                 instruction::CheatInstruction::SetStorageAt {
                     address,
@@ -1162,28 +1319,34 @@ async fn process_instructions(
 
                     let patricia_key = PatriciaKey::try_from(*address).map_err(|e| {
                         StarkbiterCoreError::DevnetError(DevnetError::StarknetApiError(e))
-                    })?;
+                    });
 
-                    state
+                    if let Err(e) = patricia_key {
+                        sender.send(Err(e));
+                        continue;
+                    }
+
+                    let result = state
                         .state
                         .state
                         .set_storage_at(
-                            api_core::ContractAddress(patricia_key),
+                            api_core::ContractAddress(patricia_key.unwrap()),
                             StorageKey::try_from(*key).unwrap(),
                             *value,
                         )
                         .map_err(|e| {
                             StarkbiterCoreError::DevnetError(DevnetError::BlockifierStateError(e))
-                        })?;
+                        })
+                        .map(|_| Outcome::Cheat(instruction::CheatcodesReturn::SetStorageAt));
 
-                    Ok(Outcome::Cheat(instruction::CheatcodesReturn::SetStorageAt))
+                    sender.send(result);
                 }
                 instruction::CheatInstruction::GetDeployedContractAddress { tx_hash } => {
                     let receipt = starknet
                         .get_transaction_receipt_by_hash(tx_hash)
                         .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
 
-                    if let TransactionReceipt::Deploy(deploy_receipt) = receipt {
+                    let res = if let TransactionReceipt::Deploy(deploy_receipt) = receipt {
                         Ok(Outcome::Cheat(
                             instruction::CheatcodesReturn::GetDeployedContractAddress(
                                 deploy_receipt.contract_address.into(),
@@ -1195,25 +1358,22 @@ async fn process_instructions(
                                 msg: "No deploy events found in tx receipt".to_string(),
                             },
                         ))
-                    }
+                    };
+
+                    sender.send(res);
                 }
             },
             Instruction::System(ref system_instruction) => match system_instruction {
                 instruction::SystemInstruction::Stop => {
                     trace!("Environment. Received Stop instruction");
                     stop = true;
-                    Ok(Outcome::System(instruction::SystemInstructionOutcome::Stop))
+
+                    sender.send(Ok(Outcome::System(
+                        instruction::SystemInstructionOutcome::Stop,
+                    )));
                 }
             },
         };
-
-        sender.send(result).map_err(|_| {
-            StarkbiterCoreError::SendError(crossbeam_channel::SendError(instruction))
-        })?;
-
-        if stop {
-            break;
-        }
     }
     Ok(())
 }

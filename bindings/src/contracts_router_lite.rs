@@ -8,12 +8,12 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct ContractsSwapper<A: starknet::accounts::ConnectedAccount + Sync> {
+pub struct ContractsRouterLite<A: starknet::accounts::ConnectedAccount + Sync> {
     pub address: starknet::core::types::Felt,
     pub account: A,
     pub block_id: starknet::core::types::BlockId,
 }
-impl<A: starknet::accounts::ConnectedAccount + Sync> ContractsSwapper<A> {
+impl<A: starknet::accounts::ConnectedAccount + Sync> ContractsRouterLite<A> {
     pub fn new(address: starknet::core::types::Felt, account: A) -> Self {
         Self {
             address,
@@ -35,12 +35,12 @@ impl<A: starknet::accounts::ConnectedAccount + Sync> ContractsSwapper<A> {
     }
 }
 #[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct ContractsSwapperReader<P: starknet::providers::Provider + Sync> {
+pub struct ContractsRouterLiteReader<P: starknet::providers::Provider + Sync> {
     pub address: starknet::core::types::Felt,
     pub provider: P,
     pub block_id: starknet::core::types::BlockId,
 }
-impl<P: starknet::providers::Provider + Sync> ContractsSwapperReader<P> {
+impl<P: starknet::providers::Provider + Sync> ContractsRouterLiteReader<P> {
     pub fn new(address: starknet::core::types::Felt, provider: P) -> Self {
         Self {
             address,
@@ -131,6 +131,70 @@ impl cainome::cairo_serde::CairoSerde for I129 {
         Ok(I129 { mag, sign })
     }
 }
+#[derive(PartialEq)]
+pub struct ICoreDispatcher {
+    pub contract_address: cainome::cairo_serde::ContractAddress,
+}
+impl cainome::cairo_serde::CairoSerde for ICoreDispatcher {
+    type RustType = Self;
+    const SERIALIZED_SIZE: std::option::Option<usize> = None;
+    #[inline]
+    fn cairo_serialized_size(__rust: &Self::RustType) -> usize {
+        let mut __size = 0;
+        __size +=
+            cainome::cairo_serde::ContractAddress::cairo_serialized_size(&__rust.contract_address);
+        __size
+    }
+    fn cairo_serialize(__rust: &Self::RustType) -> Vec<starknet::core::types::Felt> {
+        let mut __out: Vec<starknet::core::types::Felt> = vec![];
+        __out.extend(cainome::cairo_serde::ContractAddress::cairo_serialize(
+            &__rust.contract_address,
+        ));
+        __out
+    }
+    fn cairo_deserialize(
+        __felts: &[starknet::core::types::Felt],
+        __offset: usize,
+    ) -> cainome::cairo_serde::Result<Self::RustType> {
+        let mut __offset = __offset;
+        let contract_address =
+            cainome::cairo_serde::ContractAddress::cairo_deserialize(__felts, __offset)?;
+        __offset += cainome::cairo_serde::ContractAddress::cairo_serialized_size(&contract_address);
+        Ok(ICoreDispatcher { contract_address })
+    }
+}
+#[derive(PartialEq)]
+pub struct IERC20Dispatcher {
+    pub contract_address: cainome::cairo_serde::ContractAddress,
+}
+impl cainome::cairo_serde::CairoSerde for IERC20Dispatcher {
+    type RustType = Self;
+    const SERIALIZED_SIZE: std::option::Option<usize> = None;
+    #[inline]
+    fn cairo_serialized_size(__rust: &Self::RustType) -> usize {
+        let mut __size = 0;
+        __size +=
+            cainome::cairo_serde::ContractAddress::cairo_serialized_size(&__rust.contract_address);
+        __size
+    }
+    fn cairo_serialize(__rust: &Self::RustType) -> Vec<starknet::core::types::Felt> {
+        let mut __out: Vec<starknet::core::types::Felt> = vec![];
+        __out.extend(cainome::cairo_serde::ContractAddress::cairo_serialize(
+            &__rust.contract_address,
+        ));
+        __out
+    }
+    fn cairo_deserialize(
+        __felts: &[starknet::core::types::Felt],
+        __offset: usize,
+    ) -> cainome::cairo_serde::Result<Self::RustType> {
+        let mut __offset = __offset;
+        let contract_address =
+            cainome::cairo_serde::ContractAddress::cairo_deserialize(__felts, __offset)?;
+        __offset += cainome::cairo_serde::ContractAddress::cairo_serialized_size(&contract_address);
+        Ok(IERC20Dispatcher { contract_address })
+    }
+}
 #[derive(PartialEq, Serialize, Deserialize)]
 pub struct PoolKey {
     pub token0: cainome::cairo_serde::ContractAddress,
@@ -200,35 +264,34 @@ impl cainome::cairo_serde::CairoSerde for PoolKey {
         })
     }
 }
-#[derive(PartialEq)]
-pub struct SwapData {
+#[derive(PartialEq, Serialize, Deserialize)]
+pub struct RouteNode {
     pub pool_key: PoolKey,
-    pub amount: I129,
     pub sqrt_ratio_limit: cainome::cairo_serde::U256,
-    pub token: cainome::cairo_serde::ContractAddress,
+    #[serde(
+        serialize_with = "cainome::cairo_serde::serialize_as_hex",
+        deserialize_with = "cainome::cairo_serde::deserialize_from_hex"
+    )]
+    pub skip_ahead: u128,
 }
-impl cainome::cairo_serde::CairoSerde for SwapData {
+impl cainome::cairo_serde::CairoSerde for RouteNode {
     type RustType = Self;
     const SERIALIZED_SIZE: std::option::Option<usize> = None;
     #[inline]
     fn cairo_serialized_size(__rust: &Self::RustType) -> usize {
         let mut __size = 0;
         __size += PoolKey::cairo_serialized_size(&__rust.pool_key);
-        __size += I129::cairo_serialized_size(&__rust.amount);
         __size += cainome::cairo_serde::U256::cairo_serialized_size(&__rust.sqrt_ratio_limit);
-        __size += cainome::cairo_serde::ContractAddress::cairo_serialized_size(&__rust.token);
+        __size += u128::cairo_serialized_size(&__rust.skip_ahead);
         __size
     }
     fn cairo_serialize(__rust: &Self::RustType) -> Vec<starknet::core::types::Felt> {
         let mut __out: Vec<starknet::core::types::Felt> = vec![];
         __out.extend(PoolKey::cairo_serialize(&__rust.pool_key));
-        __out.extend(I129::cairo_serialize(&__rust.amount));
         __out.extend(cainome::cairo_serde::U256::cairo_serialize(
             &__rust.sqrt_ratio_limit,
         ));
-        __out.extend(cainome::cairo_serde::ContractAddress::cairo_serialize(
-            &__rust.token,
-        ));
+        __out.extend(u128::cairo_serialize(&__rust.skip_ahead));
         __out
     }
     fn cairo_deserialize(
@@ -238,36 +301,36 @@ impl cainome::cairo_serde::CairoSerde for SwapData {
         let mut __offset = __offset;
         let pool_key = PoolKey::cairo_deserialize(__felts, __offset)?;
         __offset += PoolKey::cairo_serialized_size(&pool_key);
-        let amount = I129::cairo_deserialize(__felts, __offset)?;
-        __offset += I129::cairo_serialized_size(&amount);
         let sqrt_ratio_limit = cainome::cairo_serde::U256::cairo_deserialize(__felts, __offset)?;
         __offset += cainome::cairo_serde::U256::cairo_serialized_size(&sqrt_ratio_limit);
-        let token = cainome::cairo_serde::ContractAddress::cairo_deserialize(__felts, __offset)?;
-        __offset += cainome::cairo_serde::ContractAddress::cairo_serialized_size(&token);
-        Ok(SwapData {
+        let skip_ahead = u128::cairo_deserialize(__felts, __offset)?;
+        __offset += u128::cairo_serialized_size(&skip_ahead);
+        Ok(RouteNode {
             pool_key,
-            amount,
             sqrt_ratio_limit,
-            token,
+            skip_ahead,
         })
     }
 }
 #[derive(PartialEq)]
-pub struct SwapResult {
-    pub delta: Delta,
+pub struct Swap {
+    pub route: Vec<RouteNode>,
+    pub token_amount: TokenAmount,
 }
-impl cainome::cairo_serde::CairoSerde for SwapResult {
+impl cainome::cairo_serde::CairoSerde for Swap {
     type RustType = Self;
     const SERIALIZED_SIZE: std::option::Option<usize> = None;
     #[inline]
     fn cairo_serialized_size(__rust: &Self::RustType) -> usize {
         let mut __size = 0;
-        __size += Delta::cairo_serialized_size(&__rust.delta);
+        __size += Vec::<RouteNode>::cairo_serialized_size(&__rust.route);
+        __size += TokenAmount::cairo_serialized_size(&__rust.token_amount);
         __size
     }
     fn cairo_serialize(__rust: &Self::RustType) -> Vec<starknet::core::types::Felt> {
         let mut __out: Vec<starknet::core::types::Felt> = vec![];
-        __out.extend(Delta::cairo_serialize(&__rust.delta));
+        __out.extend(Vec::<RouteNode>::cairo_serialize(&__rust.route));
+        __out.extend(TokenAmount::cairo_serialize(&__rust.token_amount));
         __out
     }
     fn cairo_deserialize(
@@ -275,9 +338,49 @@ impl cainome::cairo_serde::CairoSerde for SwapResult {
         __offset: usize,
     ) -> cainome::cairo_serde::Result<Self::RustType> {
         let mut __offset = __offset;
-        let delta = Delta::cairo_deserialize(__felts, __offset)?;
-        __offset += Delta::cairo_serialized_size(&delta);
-        Ok(SwapResult { delta })
+        let route = Vec::<RouteNode>::cairo_deserialize(__felts, __offset)?;
+        __offset += Vec::<RouteNode>::cairo_serialized_size(&route);
+        let token_amount = TokenAmount::cairo_deserialize(__felts, __offset)?;
+        __offset += TokenAmount::cairo_serialized_size(&token_amount);
+        Ok(Swap {
+            route,
+            token_amount,
+        })
+    }
+}
+#[derive(PartialEq)]
+pub struct TokenAmount {
+    pub token: cainome::cairo_serde::ContractAddress,
+    pub amount: I129,
+}
+impl cainome::cairo_serde::CairoSerde for TokenAmount {
+    type RustType = Self;
+    const SERIALIZED_SIZE: std::option::Option<usize> = None;
+    #[inline]
+    fn cairo_serialized_size(__rust: &Self::RustType) -> usize {
+        let mut __size = 0;
+        __size += cainome::cairo_serde::ContractAddress::cairo_serialized_size(&__rust.token);
+        __size += I129::cairo_serialized_size(&__rust.amount);
+        __size
+    }
+    fn cairo_serialize(__rust: &Self::RustType) -> Vec<starknet::core::types::Felt> {
+        let mut __out: Vec<starknet::core::types::Felt> = vec![];
+        __out.extend(cainome::cairo_serde::ContractAddress::cairo_serialize(
+            &__rust.token,
+        ));
+        __out.extend(I129::cairo_serialize(&__rust.amount));
+        __out
+    }
+    fn cairo_deserialize(
+        __felts: &[starknet::core::types::Felt],
+        __offset: usize,
+    ) -> cainome::cairo_serde::Result<Self::RustType> {
+        let mut __offset = __offset;
+        let token = cainome::cairo_serde::ContractAddress::cairo_deserialize(__felts, __offset)?;
+        __offset += cainome::cairo_serde::ContractAddress::cairo_serialized_size(&token);
+        let amount = I129::cairo_deserialize(__felts, __offset)?;
+        __offset += I129::cairo_serialized_size(&amount);
+        Ok(TokenAmount { token, amount })
     }
 }
 #[derive(PartialEq)]
@@ -338,17 +441,59 @@ impl TryFrom<&starknet::core::types::Event> for Event {
         ))
     }
 }
-impl<A: starknet::accounts::ConnectedAccount + Sync> ContractsSwapper<A> {
+impl<A: starknet::accounts::ConnectedAccount + Sync> ContractsRouterLite<A> {
     #[allow(clippy::ptr_arg)]
     #[allow(clippy::too_many_arguments)]
-    pub fn get_withdraw_address(
+    pub fn clear(
         &self,
-    ) -> cainome::cairo_serde::call::FCall<A::Provider, cainome::cairo_serde::ContractAddress> {
+        token: &IERC20Dispatcher,
+    ) -> cainome::cairo_serde::call::FCall<A::Provider, cainome::cairo_serde::U256> {
         use cainome::cairo_serde::CairoSerde;
         let mut __calldata = vec![];
+        __calldata.extend(IERC20Dispatcher::cairo_serialize(token));
         let __call = starknet::core::types::FunctionCall {
             contract_address: self.address,
-            entry_point_selector: starknet::macros::selector!("get_withdraw_address"),
+            entry_point_selector: starknet::macros::selector!("clear"),
+            calldata: __calldata,
+        };
+        cainome::cairo_serde::call::FCall::new(__call, self.provider())
+    }
+    #[allow(clippy::ptr_arg)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn clear_minimum(
+        &self,
+        token: &IERC20Dispatcher,
+        minimum: &cainome::cairo_serde::U256,
+    ) -> cainome::cairo_serde::call::FCall<A::Provider, cainome::cairo_serde::U256> {
+        use cainome::cairo_serde::CairoSerde;
+        let mut __calldata = vec![];
+        __calldata.extend(IERC20Dispatcher::cairo_serialize(token));
+        __calldata.extend(cainome::cairo_serde::U256::cairo_serialize(minimum));
+        let __call = starknet::core::types::FunctionCall {
+            contract_address: self.address,
+            entry_point_selector: starknet::macros::selector!("clear_minimum"),
+            calldata: __calldata,
+        };
+        cainome::cairo_serde::call::FCall::new(__call, self.provider())
+    }
+    #[allow(clippy::ptr_arg)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn clear_minimum_to_recipient(
+        &self,
+        token: &IERC20Dispatcher,
+        minimum: &cainome::cairo_serde::U256,
+        recipient: &cainome::cairo_serde::ContractAddress,
+    ) -> cainome::cairo_serde::call::FCall<A::Provider, cainome::cairo_serde::U256> {
+        use cainome::cairo_serde::CairoSerde;
+        let mut __calldata = vec![];
+        __calldata.extend(IERC20Dispatcher::cairo_serialize(token));
+        __calldata.extend(cainome::cairo_serde::U256::cairo_serialize(minimum));
+        __calldata.extend(cainome::cairo_serde::ContractAddress::cairo_serialize(
+            recipient,
+        ));
+        let __call = starknet::core::types::FunctionCall {
+            contract_address: self.address,
+            entry_point_selector: starknet::macros::selector!("clear_minimum_to_recipient"),
             calldata: __calldata,
         };
         cainome::cairo_serde::call::FCall::new(__call, self.provider())
@@ -390,10 +535,75 @@ impl<A: starknet::accounts::ConnectedAccount + Sync> ContractsSwapper<A> {
     }
     #[allow(clippy::ptr_arg)]
     #[allow(clippy::too_many_arguments)]
-    pub fn swap_getcall(&self, swap_data: &SwapData) -> starknet::core::types::Call {
+    pub fn multi_multihop_swap_getcall(&self, swaps: &Vec<Swap>) -> starknet::core::types::Call {
         use cainome::cairo_serde::CairoSerde;
         let mut __calldata = vec![];
-        __calldata.extend(SwapData::cairo_serialize(swap_data));
+        __calldata.extend(Vec::<Swap>::cairo_serialize(swaps));
+        starknet::core::types::Call {
+            to: self.address,
+            selector: starknet::macros::selector!("multi_multihop_swap"),
+            calldata: __calldata,
+        }
+    }
+    #[allow(clippy::ptr_arg)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn multi_multihop_swap(&self, swaps: &Vec<Swap>) -> starknet::accounts::ExecutionV3<A> {
+        use cainome::cairo_serde::CairoSerde;
+        let mut __calldata = vec![];
+        __calldata.extend(Vec::<Swap>::cairo_serialize(swaps));
+        let __call = starknet::core::types::Call {
+            to: self.address,
+            selector: starknet::macros::selector!("multi_multihop_swap"),
+            calldata: __calldata,
+        };
+        self.account.execute_v3(vec![__call])
+    }
+    #[allow(clippy::ptr_arg)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn multihop_swap_getcall(
+        &self,
+        route: &Vec<RouteNode>,
+        token_amount: &TokenAmount,
+    ) -> starknet::core::types::Call {
+        use cainome::cairo_serde::CairoSerde;
+        let mut __calldata = vec![];
+        __calldata.extend(Vec::<RouteNode>::cairo_serialize(route));
+        __calldata.extend(TokenAmount::cairo_serialize(token_amount));
+        starknet::core::types::Call {
+            to: self.address,
+            selector: starknet::macros::selector!("multihop_swap"),
+            calldata: __calldata,
+        }
+    }
+    #[allow(clippy::ptr_arg)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn multihop_swap(
+        &self,
+        route: &Vec<RouteNode>,
+        token_amount: &TokenAmount,
+    ) -> starknet::accounts::ExecutionV3<A> {
+        use cainome::cairo_serde::CairoSerde;
+        let mut __calldata = vec![];
+        __calldata.extend(Vec::<RouteNode>::cairo_serialize(route));
+        __calldata.extend(TokenAmount::cairo_serialize(token_amount));
+        let __call = starknet::core::types::Call {
+            to: self.address,
+            selector: starknet::macros::selector!("multihop_swap"),
+            calldata: __calldata,
+        };
+        self.account.execute_v3(vec![__call])
+    }
+    #[allow(clippy::ptr_arg)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn swap_getcall(
+        &self,
+        node: &RouteNode,
+        token_amount: &TokenAmount,
+    ) -> starknet::core::types::Call {
+        use cainome::cairo_serde::CairoSerde;
+        let mut __calldata = vec![];
+        __calldata.extend(RouteNode::cairo_serialize(node));
+        __calldata.extend(TokenAmount::cairo_serialize(token_amount));
         starknet::core::types::Call {
             to: self.address,
             selector: starknet::macros::selector!("swap"),
@@ -402,10 +612,15 @@ impl<A: starknet::accounts::ConnectedAccount + Sync> ContractsSwapper<A> {
     }
     #[allow(clippy::ptr_arg)]
     #[allow(clippy::too_many_arguments)]
-    pub fn swap(&self, swap_data: &SwapData) -> starknet::accounts::ExecutionV3<A> {
+    pub fn swap(
+        &self,
+        node: &RouteNode,
+        token_amount: &TokenAmount,
+    ) -> starknet::accounts::ExecutionV3<A> {
         use cainome::cairo_serde::CairoSerde;
         let mut __calldata = vec![];
-        __calldata.extend(SwapData::cairo_serialize(swap_data));
+        __calldata.extend(RouteNode::cairo_serialize(node));
+        __calldata.extend(TokenAmount::cairo_serialize(token_amount));
         let __call = starknet::core::types::Call {
             to: self.address,
             selector: starknet::macros::selector!("swap"),
@@ -414,17 +629,59 @@ impl<A: starknet::accounts::ConnectedAccount + Sync> ContractsSwapper<A> {
         self.account.execute_v3(vec![__call])
     }
 }
-impl<P: starknet::providers::Provider + Sync> ContractsSwapperReader<P> {
+impl<P: starknet::providers::Provider + Sync> ContractsRouterLiteReader<P> {
     #[allow(clippy::ptr_arg)]
     #[allow(clippy::too_many_arguments)]
-    pub fn get_withdraw_address(
+    pub fn clear(
         &self,
-    ) -> cainome::cairo_serde::call::FCall<P, cainome::cairo_serde::ContractAddress> {
+        token: &IERC20Dispatcher,
+    ) -> cainome::cairo_serde::call::FCall<P, cainome::cairo_serde::U256> {
         use cainome::cairo_serde::CairoSerde;
         let mut __calldata = vec![];
+        __calldata.extend(IERC20Dispatcher::cairo_serialize(token));
         let __call = starknet::core::types::FunctionCall {
             contract_address: self.address,
-            entry_point_selector: starknet::macros::selector!("get_withdraw_address"),
+            entry_point_selector: starknet::macros::selector!("clear"),
+            calldata: __calldata,
+        };
+        cainome::cairo_serde::call::FCall::new(__call, self.provider())
+    }
+    #[allow(clippy::ptr_arg)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn clear_minimum(
+        &self,
+        token: &IERC20Dispatcher,
+        minimum: &cainome::cairo_serde::U256,
+    ) -> cainome::cairo_serde::call::FCall<P, cainome::cairo_serde::U256> {
+        use cainome::cairo_serde::CairoSerde;
+        let mut __calldata = vec![];
+        __calldata.extend(IERC20Dispatcher::cairo_serialize(token));
+        __calldata.extend(cainome::cairo_serde::U256::cairo_serialize(minimum));
+        let __call = starknet::core::types::FunctionCall {
+            contract_address: self.address,
+            entry_point_selector: starknet::macros::selector!("clear_minimum"),
+            calldata: __calldata,
+        };
+        cainome::cairo_serde::call::FCall::new(__call, self.provider())
+    }
+    #[allow(clippy::ptr_arg)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn clear_minimum_to_recipient(
+        &self,
+        token: &IERC20Dispatcher,
+        minimum: &cainome::cairo_serde::U256,
+        recipient: &cainome::cairo_serde::ContractAddress,
+    ) -> cainome::cairo_serde::call::FCall<P, cainome::cairo_serde::U256> {
+        use cainome::cairo_serde::CairoSerde;
+        let mut __calldata = vec![];
+        __calldata.extend(IERC20Dispatcher::cairo_serialize(token));
+        __calldata.extend(cainome::cairo_serde::U256::cairo_serialize(minimum));
+        __calldata.extend(cainome::cairo_serde::ContractAddress::cairo_serialize(
+            recipient,
+        ));
+        let __call = starknet::core::types::FunctionCall {
+            contract_address: self.address,
+            entry_point_selector: starknet::macros::selector!("clear_minimum_to_recipient"),
             calldata: __calldata,
         };
         cainome::cairo_serde::call::FCall::new(__call, self.provider())

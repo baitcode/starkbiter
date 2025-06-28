@@ -1,5 +1,6 @@
 pub mod argent_account;
 pub mod contracts_counter;
+pub mod contracts_router_lite;
 pub mod contracts_swapper;
 pub mod contracts_user_values;
 pub mod ekubo_core;
@@ -26,3 +27,6 @@ pub static SWAPPER_CONTRACT_SIERRA: &str =
 
 pub static EKUBO_CORE_CONTRACT_SIERRA: &str =
     include_str!("../contracts/contracts_Swapper.contract_class.json");
+
+pub static EKUBO_ROUTER_LITE_CONTRACT_SIERRA: &str =
+    include_str!("../contracts/contracts_RouterLite.contract_class.json");

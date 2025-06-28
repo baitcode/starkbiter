@@ -245,7 +245,7 @@ impl Environment {
 
                     // TODO: support forking
                     // TODO: Simulated block production
-
+                    // TODO: every instruction whould encapsulate handling logic, that would allow to simplify the code and split environment mod to smaller chunks.
                     process_instructions(
                         starknet_config,
                         label.unwrap_or_else(|| "default".to_string()),

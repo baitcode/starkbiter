@@ -146,8 +146,8 @@ impl BridgedTokenDataStorage {
     }
 }
 
+static INSTANCE: OnceLock<Mutex<BridgedTokenDataStorage>> = OnceLock::new();
 fn cache() -> &'static Mutex<BridgedTokenDataStorage> {
-    static INSTANCE: OnceLock<Mutex<BridgedTokenDataStorage>> = OnceLock::new();
     INSTANCE.get_or_init(|| Mutex::new(BridgedTokenDataStorage::new()))
 }
 

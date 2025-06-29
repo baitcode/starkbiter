@@ -1,17 +1,19 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, OnceLock},
+    ops::Bound,
+    sync::{Arc, OnceLock},
 };
 
 use pyo3::prelude::*;
 
 use starkbiter_core::{
     environment::Environment,
-    middleware::{self, connection::Connection, traits::Middleware, StarkbiterMiddleware},
+    middleware::{connection::Connection, traits::Middleware, StarkbiterMiddleware},
 };
 use starknet::core::types::Felt;
-use starknet_accounts::{Account, SingleOwnerAccount};
+use starknet_accounts::{Account, SingleOwnerAccount}
 use starknet_signers::{LocalWallet, SigningKey};
+use tokio::sync::Mutex;
 
 static ACCOUNTS: OnceLock<Mutex<HashMap<String, SingleOwnerAccount<Connection, LocalWallet>>>> =
     OnceLock::new();
@@ -31,70 +33,104 @@ fn middlewares() -> &'static Mutex<HashMap<String, Arc<StarkbiterMiddleware>>> {
 
 /// Formats the sum of two numbers as string.
 #[pyfunction]
-fn create_evironment(label: &str, chain_id: &str) -> PyResult<String> {
-    let chain_id = Felt::from_hex(chain_id).unwrap();
+fn create_evironment<'p>(py: Python<'p>, label: &str, chain_id: &str) -> PyResult<&'p PyAny> {
+    let chain_id_local = chain_id.to_string();
+    let label_local = label.to_string();
 
-    // Spin up a new environment with the specified chain ID
-    let env = Environment::builder()
-        .with_chain_id(chain_id.into())
-        .build();
+    pyo3_asyncio::tokio::future_into_py::<_, _>(py, async move {
+        let chain_id = Felt::from_hex(&chain_id_local).unwrap();
 
-    Ok("Spinning ".to_string())
+        // Spin up a new environment with the specified chain ID
+        let env = Environment::builder()
+            .with_chain_id(chain_id.into())
+            .with_label(&label_local)
+            .build();
+
+        let mut envs_lock = environments().lock().await;
+        envs_lock.insert(label_local, env);
+
+        Ok("asd".to_string())
+    })
 }
 
 #[pyfunction]
-fn create_middleware(env_label: &str) -> PyResult<String> {
-    let envs_lock = environments().lock().unwrap();
-    let env = envs_lock.get(env_label);
+fn create_middleware<'p>(py: Python<'p>, environment_id: &str) -> PyResult<&'p PyAny> {
+    let environment_id_local = environment_id.to_string();
 
-    return if let Some(env) = env {
-        let maybe_middleware = StarkbiterMiddleware::new(env, Some("random_id"));
+    pyo3_asyncio::tokio::future_into_py::<_, _>(py, async move {
+        let envs_lock = environments().lock().await;
+        let maybe_env = envs_lock.get(&environment_id_local);
 
-        if let Err(e) = maybe_middleware {
-            return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to create middleware: {}",
-                e
+        if let None = maybe_env {
+            return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                "Environment not found for: {:?}",
+                environment_id_local
             )));
         }
 
-        let middlewares_lock = middlewares();
-        let mut middlewares = middlewares_lock.lock().unwrap();
-        let id = "random_id";
-        middlewares.insert("asd".to_string(), maybe_middleware.unwrap());
-        Ok(id.to_string())
-    } else {
-        Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
-            "Environment '{}' not found",
-            env_label
-        )))
-    };
+        let env = maybe_env.unwrap();
+
+        let random_id = "random_id";
+        let middleware = StarkbiterMiddleware::new(env, Some(random_id)).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to create middleware: {}",
+                e
+            ))
+        })?;
+
+        return Ok(random_id);
+    })
 }
 
-fn create_account(middleware_id: &str, class_hash: &str) -> PyResult<String> {
-    let middlewares_lock = middlewares().lock().unwrap();
-    let middleware = middlewares_lock.get(middleware_id);
+#[pyfunction]
+fn create_account<'p>(
+    py: Python<'p>,
+    middleware_id: &str,
+    class_hash: &str,
+) -> PyResult<&'p PyAny> {
+    let middleware_id_local = middleware_id.to_string();
+    let class_hash_id_local = class_hash.to_string();
 
-    if let Some(middleware) = middleware {
-        let account = middleware
+    pyo3_asyncio::tokio::future_into_py::<_, _>(py, async move {
+        let middlewares_lock = middlewares().lock();
+        let guard = middlewares_lock.await;
+        let maybe_middleware = guard.get(middleware_id_local.as_str());
+
+        if let None = maybe_middleware {
+            return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                "Middleware not found for: {:?}",
+                &middleware_id_local
+            )));
+        }
+
+        let middleware = maybe_middleware.unwrap();
+
+        let maybe_account = middleware
             .create_single_owner_account(
                 Option::<SigningKey>::None,
-                Felt::from_hex_unchecked(class_hash),
+                Felt::from_hex_unchecked(&class_hash_id_local),
                 100000000,
             )
             .await;
 
-        Ok(account.address().to_string())
-    } else {
-        Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
-            "Middleware '{}' not found",
-            middleware_id
-        )))
-    }
+        if let Err(e) = maybe_account {
+            return Err(PyErr::new::<pyo3::exceptions::PyException, _>(format!(
+                "Can't create account: {:?}",
+                e
+            )));
+        }
+
+        let account = maybe_account.unwrap();
+
+        return Ok(account.address().to_string());
+    })
 }
 
 /// A Python module implemented in Rust.
 #[pymodule]
-fn python_bindings(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(sum_as_string, m)?)?;
+fn python_bindings(py: Python, m: &PyModule) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(create_account, m)?)?;
+    m.add_function(wrap_pyfunction!(create_evironment, m)?)?;
+    m.add_function(wrap_pyfunction!(create_middleware, m)?)?;
     Ok(())
 }

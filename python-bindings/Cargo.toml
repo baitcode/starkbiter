@@ -9,8 +9,10 @@ name = "python_bindings"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = "0.25.0"
+pyo3 = "0.20.3"
+pyo3-asyncio = { version = "0.20", features = ["attributes", "tokio-runtime"] }
 
+tokio.workspace = true
 starkbiter-engine.workspace = true
 starkbiter-bindings.workspace = true
 starkbiter-core.workspace = true

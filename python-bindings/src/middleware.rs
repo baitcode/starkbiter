@@ -489,3 +489,76 @@ pub fn call<'p>(
         return Ok(result);
     })
 }
+
+#[pyfunction]
+pub fn impersonate<'p>(py: Python<'p>, middleware_id: &str, address: &str) -> PyResult<&'p PyAny> {
+    let middleware_id_local = middleware_id.to_string();
+    let address_local = address.to_string();
+
+    pyo3_asyncio::tokio::future_into_py::<_, _>(py, async move {
+        let middlewares_lock = middlewares().lock().await;
+        let maybe_middleware = middlewares_lock.get(&middleware_id_local);
+
+        if let None = maybe_middleware {
+            return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                "Middleware not found for: {:?}",
+                &middleware_id_local
+            )));
+        }
+
+        let middleware = maybe_middleware.unwrap();
+
+        let address = types::Felt::from_hex(&address_local).map_err(|e| {
+            pyo3::PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Invalid 'to' address: {}",
+                e
+            ))
+        })?;
+
+        middleware.impersonate(address).await.map_err(|e| {
+            PyErr::new::<crate::ProviderError, _>(format!("Failed to top up balance: {}", e))
+        })?;
+
+        return Ok(());
+    })
+}
+
+#[pyfunction]
+pub fn stop_impersonate<'p>(
+    py: Python<'p>,
+    middleware_id: &str,
+    address: &str,
+) -> PyResult<&'p PyAny> {
+    let middleware_id_local = middleware_id.to_string();
+    let address_local = address.to_string();
+
+    pyo3_asyncio::tokio::future_into_py::<_, _>(py, async move {
+        let middlewares_lock = middlewares().lock().await;
+        let maybe_middleware = middlewares_lock.get(&middleware_id_local);
+
+        if let None = maybe_middleware {
+            return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                "Middleware not found for: {:?}",
+                &middleware_id_local
+            )));
+        }
+
+        let middleware = maybe_middleware.unwrap();
+
+        let address = types::Felt::from_hex(&address_local).map_err(|e| {
+            pyo3::PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Invalid 'to' address: {}",
+                e
+            ))
+        })?;
+
+        middleware
+            .stop_impersonating_account(address)
+            .await
+            .map_err(|e| {
+                PyErr::new::<crate::ProviderError, _>(format!("Failed to top up balance: {}", e))
+            })?;
+
+        return Ok(());
+    })
+}

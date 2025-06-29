@@ -15,6 +15,8 @@ fn python_bindings(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(middleware::set_storage, m)?)?;
     m.add_function(wrap_pyfunction!(middleware::get_storage, m)?)?;
     m.add_function(wrap_pyfunction!(middleware::call, m)?)?;
+    m.add_function(wrap_pyfunction!(middleware::impersonate, m)?)?;
+    m.add_function(wrap_pyfunction!(middleware::stop_impersonate, m)?)?;
 
     m.add_class::<environment::ForkParams>()?;
     Ok(())

@@ -10,7 +10,7 @@ use starkbiter_core::{
     tokens::TokenId,
 };
 use starknet_accounts::{Account, SingleOwnerAccount};
-use starknet_core::types::Felt;
+use starknet_core::types;
 use starknet_signers::{LocalWallet, SigningKey};
 use tokio::sync::Mutex;
 
@@ -25,6 +25,50 @@ static ACCOUNTS: OnceLock<Mutex<HashMap<String, SingleOwnerAccount<Connection, L
     OnceLock::new();
 fn accounts() -> &'static Mutex<HashMap<String, SingleOwnerAccount<Connection, LocalWallet>>> {
     ACCOUNTS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+#[pyclass]
+#[derive(FromPyObject)]
+pub struct BlockId {
+    #[pyo3(get, set)]
+    pub number: Option<u64>,
+    #[pyo3(get, set)]
+    pub hash: Option<String>,
+    #[pyo3(get, set)]
+    pub tag: Option<String>,
+}
+
+impl TryFrom<BlockId> for types::BlockId {
+    type Error = pyo3::PyErr;
+
+    fn try_from(value: BlockId) -> Result<Self, Self::Error> {
+        match value {
+            BlockId {
+                number: Some(number),
+                hash: _,
+                tag: _,
+            } => Ok(types::BlockId::Number(number)),
+            BlockId {
+                number: _,
+                hash: Some(hash),
+                tag: _,
+            } => Ok(types::BlockId::Hash(types::Felt::from_hex_unchecked(&hash))),
+            BlockId {
+                number: _,
+                hash: _,
+                tag: Some(tag),
+            } => match tag.as_str() {
+                "latest" => Ok(types::BlockId::Tag(types::BlockTag::Latest)),
+                "pending" => Ok(types::BlockId::Tag(types::BlockTag::Pending)),
+                _ => Err(pyo3::PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                    "Invalid block tag provided. Use 'latest' or 'pending'.",
+                )),
+            },
+            _ => Err(pyo3::PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "BlockId must have either a number, hash, or tag set",
+            )),
+        }
+    }
 }
 
 #[pyfunction]
@@ -118,22 +162,19 @@ pub fn create_account<'p>(
 
         let middleware = maybe_middleware.unwrap();
 
-        let maybe_account = middleware
+        let account = middleware
             .create_single_owner_account(
                 Option::<SigningKey>::None,
-                Felt::from_hex_unchecked(&class_hash_id_local),
+                types::Felt::from_hex_unchecked(&class_hash_id_local),
                 100000000,
             )
-            .await;
-
-        if let Err(e) = maybe_account {
-            return Err(PyErr::new::<pyo3::exceptions::PyException, _>(format!(
-                "Can't create account: {:?}",
-                e
-            )));
-        }
-
-        let account = maybe_account.unwrap();
+            .await
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyException, _>(format!(
+                    "Can't create account: {:?}",
+                    e
+                ))
+            })?;
 
         let mut accounts_lock = accounts().lock().await;
 
@@ -168,6 +209,44 @@ impl Call {
     }
 }
 
+impl TryFrom<Call> for types::FunctionCall {
+    type Error = pyo3::PyErr;
+
+    fn try_from(value: Call) -> Result<types::FunctionCall, Self::Error> {
+        let to = types::Felt::from_hex(&value.to).map_err(|e| {
+            pyo3::PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Invalid 'to' address: {}",
+                e
+            ))
+        })?;
+
+        let selector = types::Felt::from_hex(&value.selector).map_err(|e| {
+            pyo3::PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Invalid 'selector' value: {}",
+                e
+            ))
+        })?;
+
+        let calldata = value
+            .calldata
+            .iter()
+            .map(|v| types::Felt::from_hex(v))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| {
+                pyo3::PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Invalid 'calldata' value: {}",
+                    e
+                ))
+            })?;
+
+        Ok(types::FunctionCall {
+            contract_address: to,
+            entry_point_selector: selector,
+            calldata,
+        })
+    }
+}
+
 #[pyfunction]
 pub fn account_execute<'p>(py: Python<'p>, address: &str, calls: Vec<Call>) -> PyResult<&'p PyAny> {
     let address_local = address.to_string();
@@ -189,12 +268,12 @@ pub fn account_execute<'p>(py: Python<'p>, address: &str, calls: Vec<Call>) -> P
         let calls = calls
             .iter()
             .map(|c| starknet_core::types::Call {
-                to: Felt::from_hex_unchecked(&c.to),
-                selector: Felt::from_hex_unchecked(&c.selector),
+                to: types::Felt::from_hex_unchecked(&c.to),
+                selector: types::Felt::from_hex_unchecked(&c.selector),
                 calldata: c
                     .calldata
                     .iter()
-                    .map(|v| Felt::from_hex_unchecked(v))
+                    .map(|v| types::Felt::from_hex_unchecked(v))
                     .collect(),
             })
             .collect();
@@ -223,14 +302,57 @@ pub fn top_up_balance<'p>(
     let token_local = token.to_string();
 
     pyo3_asyncio::tokio::future_into_py::<_, _>(py, async move {
-        let maybe_token = TokenId::try_from(token_local.as_str());
-        if let Err(r) = maybe_token {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Invalid token ID provided: {}",
-                r
+        let middlewares_lock = middlewares().lock().await;
+        let maybe_middleware = middlewares_lock.get(&middleware_id_local);
+
+        if let None = maybe_middleware {
+            return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                "Middleware not found for: {:?}",
+                &middleware_id_local
             )));
         }
 
+        let token = TokenId::try_from(token_local.as_str()).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Invalid token ID provided: {}",
+                e
+            ))
+        })?;
+
+        let address = types::Felt::from_hex(&address_local).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Can't convert hex to contract address: {:?} {:?}",
+                &address_local, e
+            ))
+        })?;
+
+        let middleware = maybe_middleware.unwrap();
+
+        middleware
+            .top_up_balance(address, amount, token)
+            .await
+            .map_err(|e| {
+                PyErr::new::<crate::ProviderError, _>(format!("Failed to top up balance: {}", e))
+            })?;
+
+        return Ok(());
+    })
+}
+
+#[pyfunction]
+pub fn set_storage<'p>(
+    py: Python<'p>,
+    middleware_id: &str,
+    address: &str,
+    key: &str,
+    value: &str,
+) -> PyResult<&'p PyAny> {
+    let middleware_id_local = middleware_id.to_string();
+    let address_local = address.to_string();
+    let key_local = key.to_string();
+    let value_local = value.to_string();
+
+    pyo3_asyncio::tokio::future_into_py::<_, _>(py, async move {
         let middlewares_lock = middlewares().lock().await;
         let maybe_middleware = middlewares_lock.get(&middleware_id_local);
 
@@ -243,20 +365,127 @@ pub fn top_up_balance<'p>(
 
         let middleware = maybe_middleware.unwrap();
 
+        let address = types::Felt::from_hex(&address_local).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Can't convert hex to contract address: {:?} {:?}",
+                &address_local, e
+            ))
+        })?;
+
+        let key = types::Felt::from_hex(&key_local).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Can't convert hex to felt252: {:?} {:?}",
+                &key_local, e
+            ))
+        })?;
+
+        let value = types::Felt::from_hex(&value_local).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Can't convert hex to felt252: {:?} {:?}",
+                &value_local, e
+            ))
+        })?;
+
         middleware
-            .top_up_balance(
-                Felt::from_hex_unchecked(&address_local),
-                amount,
-                maybe_token.unwrap(),
-            )
+            .set_storage_at(address, key, value)
             .await
             .map_err(|e| {
-                PyErr::new::<crate::ProviderException, _>(format!(
-                    "Failed to top up balance: {}",
-                    e
-                ))
+                PyErr::new::<crate::ProviderError, _>(format!("Failed to top up balance: {}", e))
             })?;
 
         return Ok(());
+    })
+}
+
+#[pyfunction]
+pub fn get_storage<'p>(
+    py: Python<'p>,
+    middleware_id: &str,
+    address: &str,
+    key: &str,
+    block_id: BlockId,
+) -> PyResult<&'p PyAny> {
+    let middleware_id_local = middleware_id.to_string();
+    let address_local = address.to_string();
+    let key_local = key.to_string();
+
+    pyo3_asyncio::tokio::future_into_py::<_, _>(py, async move {
+        let middlewares_lock = middlewares().lock().await;
+        let maybe_middleware = middlewares_lock.get(&middleware_id_local);
+
+        if let None = maybe_middleware {
+            return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                "Middleware not found for: {:?}",
+                &middleware_id_local
+            )));
+        }
+
+        let middleware = maybe_middleware.unwrap();
+
+        let address = types::Felt::from_hex(&address_local).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Can't convert hex to contract address: {:?} {:?}",
+                &address_local, e
+            ))
+        })?;
+
+        let key = types::Felt::from_hex(&key_local).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Can't convert hex to felt252: {:?} {:?}",
+                &key_local, e
+            ))
+        })?;
+
+        let block_id = types::BlockId::try_from(block_id).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid block id: {:?}", e))
+        })?;
+
+        let data = middleware
+            .get_storage_at(address, key, block_id)
+            .await
+            .map_err(|e| {
+                PyErr::new::<crate::ProviderError, _>(format!("Failed to top up balance: {}", e))
+            })?;
+
+        return Ok(data.to_hex_string());
+    })
+}
+
+#[pyfunction]
+pub fn call<'p>(
+    py: Python<'p>,
+    middleware_id: &str,
+    call: Call,
+    block_id: BlockId,
+) -> PyResult<&'p PyAny> {
+    let middleware_id_local = middleware_id.to_string();
+
+    pyo3_asyncio::tokio::future_into_py::<_, _>(py, async move {
+        let middlewares_lock = middlewares().lock().await;
+        let maybe_middleware = middlewares_lock.get(&middleware_id_local);
+
+        if let None = maybe_middleware {
+            return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                "Middleware not found for: {:?}",
+                &middleware_id_local
+            )));
+        }
+
+        let middleware = maybe_middleware.unwrap();
+
+        let block_id = types::BlockId::try_from(block_id).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid block id: {:?}", e))
+        })?;
+
+        let call = types::FunctionCall::try_from(call).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid call: {:?}", e))
+        })?;
+
+        let data = middleware.call(call, block_id).await.map_err(|e| {
+            PyErr::new::<crate::ProviderError, _>(format!("Failed to top up balance: {}", e))
+        })?;
+
+        let result: Vec<_> = data.iter().map(|i| i.to_hex_string()).collect();
+        return Ok(result);
     })
 }

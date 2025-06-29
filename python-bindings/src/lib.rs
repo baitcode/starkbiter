@@ -11,8 +11,13 @@ fn python_bindings(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(middleware::declare_contract, m)?)?;
     m.add_function(wrap_pyfunction!(middleware::create_account, m)?)?;
     m.add_function(wrap_pyfunction!(middleware::account_execute, m)?)?;
+    m.add_function(wrap_pyfunction!(middleware::top_up_balance, m)?)?;
+    m.add_function(wrap_pyfunction!(middleware::set_storage, m)?)?;
+    m.add_function(wrap_pyfunction!(middleware::get_storage, m)?)?;
+    m.add_function(wrap_pyfunction!(middleware::call, m)?)?;
+
     m.add_class::<environment::ForkParams>()?;
     Ok(())
 }
 
-create_exception!(python_bindings, ProviderException, PyException);
+create_exception!(python_bindings, ProviderError, PyException);

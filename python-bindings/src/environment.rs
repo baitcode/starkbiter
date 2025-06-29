@@ -1,11 +1,8 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, OnceLock},
-};
+use std::{collections::HashMap, sync::OnceLock};
 
 use pyo3::prelude::*;
 
-use starkbiter_core::{environment, middleware::StarkbiterMiddleware};
+use starkbiter_core::environment;
 use starknet::providers::Url;
 use starknet_core::types::Felt;
 use tokio::sync::Mutex;

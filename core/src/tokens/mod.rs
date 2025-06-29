@@ -5,15 +5,15 @@
 //! TokenId TokenId is exported as well. This is intended to be used with forked
 //! Starknet Devnet Mainnet and Sepolia networks.
 
-use std::{
-    collections::HashMap,
-    sync::{Mutex, OnceLock},
-};
-
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use starknet_core::types::Felt;
 use starknet_devnet_types::chain_id::ChainId;
+
+use std::{
+    collections::HashMap,
+    sync::{Mutex, OnceLock},
+};
 
 static MAINNET_JSON: &str = include_str!("./assets/mainnet.json");
 static SEPOLIA_JSON: &str = include_str!("./assets/sepolia.json");
@@ -39,6 +39,22 @@ impl From<&TokenId> for String {
             TokenId::USDT => "usdt".to_string(),
             TokenId::DAI => "dai".to_string(),
             TokenId::EKUBO => "ekubo".to_string(),
+        }
+    }
+}
+
+impl TryFrom<&str> for TokenId {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
+        match value {
+            "strk" => Ok(TokenId::STRK),
+            "eth" => Ok(TokenId::ETH),
+            "usdc" => Ok(TokenId::USDC),
+            "usdt" => Ok(TokenId::USDT),
+            "dai" => Ok(TokenId::DAI),
+            "ekubo" => Ok(TokenId::EKUBO),
+            _ => Err(anyhow!("Unsupported token identifier: {}", value)),
         }
     }
 }

@@ -12,7 +12,10 @@ crate-type = ["cdylib"]
 pyo3 = "0.20.3"
 pyo3-asyncio = { version = "0.20", features = ["attributes", "tokio-runtime"] }
 
+futures.workspace = true
 tokio.workspace = true
+uuid.workspace = true
+
 starkbiter-engine.workspace = true
 starkbiter-bindings.workspace = true
 starkbiter-core.workspace = true

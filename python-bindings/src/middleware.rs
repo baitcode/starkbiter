@@ -3,6 +3,7 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
+use futures::{stream::Peekable, Stream, StreamExt};
 use pyo3::prelude::*;
 
 use starkbiter_core::{
@@ -10,7 +11,7 @@ use starkbiter_core::{
     tokens::TokenId,
 };
 use starknet_accounts::{Account, SingleOwnerAccount};
-use starknet_core::types;
+use starknet_core::types::{self};
 use starknet_signers::{LocalWallet, SigningKey};
 use tokio::sync::Mutex;
 
@@ -25,6 +26,20 @@ static ACCOUNTS: OnceLock<Mutex<HashMap<String, SingleOwnerAccount<Connection, L
     OnceLock::new();
 fn accounts() -> &'static Mutex<HashMap<String, SingleOwnerAccount<Connection, LocalWallet>>> {
     ACCOUNTS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+static SUBSCRIPTIONS: OnceLock<
+    Mutex<
+        HashMap<
+            String,
+            Mutex<Peekable<std::pin::Pin<Box<dyn Stream<Item = Event> + Send + Sync>>>>,
+        >,
+    >,
+> = OnceLock::new();
+fn subscriptions() -> &'static Mutex<
+    HashMap<String, Mutex<Peekable<std::pin::Pin<Box<dyn Stream<Item = Event> + Send + Sync>>>>>,
+> {
+    SUBSCRIPTIONS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 #[pyclass]
@@ -79,7 +94,7 @@ pub fn create_middleware<'p>(py: Python<'p>, environment_id: &str) -> PyResult<&
         let envs_lock = env_registry().lock().await;
         let maybe_env = envs_lock.get(&environment_id_local);
 
-        if let None = maybe_env {
+        if maybe_env.is_none() {
             return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
                 "Environment not found for: {:?}",
                 environment_id_local
@@ -88,8 +103,8 @@ pub fn create_middleware<'p>(py: Python<'p>, environment_id: &str) -> PyResult<&
 
         let env = maybe_env.unwrap();
 
-        let random_id = "random_id";
-        let middleware = StarkbiterMiddleware::new(env, Some(random_id)).map_err(|e| {
+        let random_id = uuid::Uuid::new_v4().to_string();
+        let middleware = StarkbiterMiddleware::new(env, Some(&random_id)).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
                 "Failed to create middleware: {}",
                 e
@@ -116,7 +131,7 @@ pub fn declare_contract<'p>(
         let middlewares_lock = middlewares().lock().await;
         let maybe_middleware = middlewares_lock.get(&middleware_id_local);
 
-        if let None = maybe_middleware {
+        if maybe_middleware.is_none() {
             return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
                 "Middleware not found for: {:?}",
                 &middleware_id_local
@@ -153,7 +168,7 @@ pub fn create_account<'p>(
         let guard = middlewares_lock.await;
         let maybe_middleware = guard.get(middleware_id_local.as_str());
 
-        if let None = maybe_middleware {
+        if maybe_middleware.is_none() {
             return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
                 "Middleware not found for: {:?}",
                 &middleware_id_local
@@ -256,7 +271,7 @@ pub fn account_execute<'p>(py: Python<'p>, address: &str, calls: Vec<Call>) -> P
 
         let maybe_account = accounts_lock.get(address_local.as_str());
 
-        if let None = maybe_account {
+        if maybe_account.is_none() {
             return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
                 "Can't find account: {:?}",
                 address_local
@@ -305,7 +320,7 @@ pub fn top_up_balance<'p>(
         let middlewares_lock = middlewares().lock().await;
         let maybe_middleware = middlewares_lock.get(&middleware_id_local);
 
-        if let None = maybe_middleware {
+        if maybe_middleware.is_none() {
             return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
                 "Middleware not found for: {:?}",
                 &middleware_id_local
@@ -356,7 +371,7 @@ pub fn set_storage<'p>(
         let middlewares_lock = middlewares().lock().await;
         let maybe_middleware = middlewares_lock.get(&middleware_id_local);
 
-        if let None = maybe_middleware {
+        if maybe_middleware.is_none() {
             return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
                 "Middleware not found for: {:?}",
                 &middleware_id_local
@@ -413,7 +428,7 @@ pub fn get_storage<'p>(
         let middlewares_lock = middlewares().lock().await;
         let maybe_middleware = middlewares_lock.get(&middleware_id_local);
 
-        if let None = maybe_middleware {
+        if maybe_middleware.is_none() {
             return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
                 "Middleware not found for: {:?}",
                 &middleware_id_local
@@ -464,7 +479,7 @@ pub fn call<'p>(
         let middlewares_lock = middlewares().lock().await;
         let maybe_middleware = middlewares_lock.get(&middleware_id_local);
 
-        if let None = maybe_middleware {
+        if maybe_middleware.is_none() {
             return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
                 "Middleware not found for: {:?}",
                 &middleware_id_local
@@ -499,7 +514,7 @@ pub fn impersonate<'p>(py: Python<'p>, middleware_id: &str, address: &str) -> Py
         let middlewares_lock = middlewares().lock().await;
         let maybe_middleware = middlewares_lock.get(&middleware_id_local);
 
-        if let None = maybe_middleware {
+        if maybe_middleware.is_none() {
             return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
                 "Middleware not found for: {:?}",
                 &middleware_id_local
@@ -536,7 +551,7 @@ pub fn stop_impersonate<'p>(
         let middlewares_lock = middlewares().lock().await;
         let maybe_middleware = middlewares_lock.get(&middleware_id_local);
 
-        if let None = maybe_middleware {
+        if maybe_middleware.is_none() {
             return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
                 "Middleware not found for: {:?}",
                 &middleware_id_local
@@ -560,5 +575,103 @@ pub fn stop_impersonate<'p>(
             })?;
 
         return Ok(());
+    })
+}
+
+#[pyclass]
+#[derive(Clone)]
+pub struct Event {
+    #[pyo3(get, set)]
+    pub from_address: String,
+
+    #[pyo3(get, set)]
+    pub keys: Vec<String>,
+
+    #[pyo3(get, set)]
+    pub data: Vec<String>,
+
+    #[pyo3(get, set)]
+    pub block_hash: Option<String>,
+
+    #[pyo3(get, set)]
+    pub block_number: Option<u64>,
+
+    #[pyo3(get, set)]
+    pub transaction_hash: String,
+}
+
+impl TryFrom<&types::EmittedEvent> for Event {
+    type Error = pyo3::PyErr;
+
+    fn try_from(value: &types::EmittedEvent) -> Result<Self, Self::Error> {
+        Ok(Self {
+            from_address: value.from_address.to_hex_string(),
+            keys: value.keys.iter().map(|i| i.to_hex_string()).collect(),
+            data: value.data.iter().map(|i| i.to_hex_string()).collect(),
+            block_hash: value.block_hash.map(|v| v.to_hex_string()),
+            block_number: value.block_number,
+            transaction_hash: value.transaction_hash.to_hex_string(),
+        })
+    }
+}
+
+#[pyfunction]
+pub fn create_subscription<'p>(py: Python<'p>, middleware_id: &str) -> PyResult<&'p PyAny> {
+    let middleware_id_local = middleware_id.to_string();
+
+    pyo3_asyncio::tokio::future_into_py::<_, _>(py, async move {
+        let middlewares_lock = middlewares().lock().await;
+        let maybe_middleware = middlewares_lock.get(&middleware_id_local);
+
+        if maybe_middleware.is_none() {
+            return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                "Middleware not found for: {:?}",
+                &middleware_id_local
+            )));
+        }
+
+        let middleware = maybe_middleware.unwrap();
+
+        let subscription = middleware.subscribe_to_flatten::<Event>().await;
+
+        let mut subscriptions_lock = subscriptions().lock().await;
+        let random_id = uuid::Uuid::new_v4().to_string();
+
+        subscriptions_lock.insert(random_id.clone(), Mutex::new(subscription.peekable()));
+
+        return Ok(random_id);
+    })
+}
+
+#[pyfunction]
+pub fn poll_subscription<'p>(
+    py: Python<'p>,
+    subscription_id: &str,
+    n: usize,
+) -> PyResult<&'p PyAny> {
+    let subscription_id_local = subscription_id.to_string();
+
+    pyo3_asyncio::tokio::future_into_py::<_, _>(py, async move {
+        let subscriptions_lock = subscriptions().lock().await;
+        let maybe_subscription = subscriptions_lock.get(&subscription_id_local);
+
+        if maybe_subscription.is_none() {
+            return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                "Subscription not found for: {:?}",
+                &subscription_id_local
+            )));
+        }
+
+        let subscription_lock = maybe_subscription.unwrap();
+        let mut subscription = subscription_lock.lock().await;
+
+        let z = subscription.next().await; // Advance the stream to the next event
+        if z.is_none() {
+            return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                "No events available in the subscription",
+            ));
+        }
+
+        return Ok(z.unwrap());
     })
 }

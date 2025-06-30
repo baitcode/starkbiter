@@ -17,6 +17,8 @@ fn python_bindings(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(middleware::call, m)?)?;
     m.add_function(wrap_pyfunction!(middleware::impersonate, m)?)?;
     m.add_function(wrap_pyfunction!(middleware::stop_impersonate, m)?)?;
+    m.add_function(wrap_pyfunction!(middleware::create_subscription, m)?)?;
+    m.add_function(wrap_pyfunction!(middleware::poll_subscription, m)?)?;
 
     m.add_class::<environment::ForkParams>()?;
     Ok(())

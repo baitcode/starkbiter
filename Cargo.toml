@@ -41,6 +41,8 @@ starkbiter-core = { path = "core" }
 starkbiter-engine = { path = "engine" }
 starkbiter-macros = { path = "macros" }
 
+uuid = { version = "=1.17.0", features = ["v4"] }
+
 # starknet-devnet-core = { path = "/Users/baitcode/work/starknet/starknet-devnet/crates/starknet-devnet-core" }
 starknet-devnet-core = { git = "https://github.com/baitcode/starknet-devnet.git", branch = "experiment" }
 starknet-devnet-types = { git = "https://github.com/baitcode/starknet-devnet.git", branch = "experiment" }
@@ -106,6 +108,9 @@ config = { version = "=0.14.0" }
 toml.workspace = true
 Inflector = { version = "=0.11.4" }
 
+# Building files
+# foundry-config = { version = "=0.2.0" }
+# tempfile = { version = "3.10.1" }
 
 # Errors
 thiserror.workspace = true

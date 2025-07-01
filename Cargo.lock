@@ -4992,6 +4992,7 @@ dependencies = [
  "indoc",
  "libc",
  "memoffset",
+ "num-bigint",
  "parking_lot 0.12.4",
  "portable-atomic",
  "pyo3-build-config",
@@ -5075,6 +5076,7 @@ name = "python-bindings"
 version = "0.1.0"
 dependencies = [
  "futures",
+ "num-bigint",
  "pyo3",
  "pyo3-asyncio",
  "starkbiter-bindings",
@@ -5085,6 +5087,7 @@ dependencies = [
  "starknet-core",
  "starknet-signers",
  "tokio",
+ "tracing-subscriber",
  "uuid 1.17.0",
 ]
 

@@ -4,6 +4,7 @@ use std::{
 };
 
 use futures::{stream::Peekable, Stream, StreamExt};
+use num_bigint::BigInt;
 use pyo3::prelude::*;
 
 use starkbiter_core::{
@@ -43,7 +44,7 @@ fn subscriptions() -> &'static Mutex<
 }
 
 #[pyclass]
-#[derive(FromPyObject)]
+#[derive(FromPyObject, Default)]
 pub struct BlockId {
     #[pyo3(get, set)]
     pub number: Option<u64>,
@@ -51,6 +52,31 @@ pub struct BlockId {
     pub hash: Option<String>,
     #[pyo3(get, set)]
     pub tag: Option<String>,
+}
+
+#[pymethods]
+impl BlockId {
+    #[staticmethod]
+    pub fn from_number(number: u64) -> Self {
+        BlockId {
+            number: Some(number),
+            ..Self::default()
+        }
+    }
+    #[staticmethod]
+    pub fn from_hash(hash: &str) -> Self {
+        BlockId {
+            hash: Some(hash.to_string()),
+            ..Self::default()
+        }
+    }
+    #[staticmethod]
+    pub fn from_tag(tag: &str) -> Self {
+        BlockId {
+            tag: Some(tag.to_string()),
+            ..Self::default()
+        }
+    }
 }
 
 impl TryFrom<BlockId> for types::BlockId {
@@ -209,17 +235,17 @@ pub struct Call {
     #[pyo3(get, set)]
     pub selector: String,
     #[pyo3(get, set)]
-    pub calldata: Vec<String>,
+    pub calldata: Vec<BigInt>,
 }
 
 #[pymethods]
 impl Call {
     #[new]
-    fn new(to: &str, selector: &str, calldata: Vec<&str>) -> Self {
+    fn new(to: &str, selector: &str, calldata: Vec<BigInt>) -> Self {
         Call {
             to: to.to_string(),
             selector: selector.to_string(),
-            calldata: calldata.iter().map(|v| v.to_string()).collect(),
+            calldata,
         }
     }
 }
@@ -245,14 +271,8 @@ impl TryFrom<Call> for types::FunctionCall {
         let calldata = value
             .calldata
             .iter()
-            .map(|v| types::Felt::from_hex(v))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| {
-                pyo3::PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                    "Invalid 'calldata' value: {}",
-                    e
-                ))
-            })?;
+            .map(|v| types::Felt::from(v))
+            .collect();
 
         Ok(types::FunctionCall {
             contract_address: to,
@@ -285,11 +305,7 @@ pub fn account_execute<'p>(py: Python<'p>, address: &str, calls: Vec<Call>) -> P
             .map(|c| starknet_core::types::Call {
                 to: types::Felt::from_hex_unchecked(&c.to),
                 selector: types::Felt::from_hex_unchecked(&c.selector),
-                calldata: c
-                    .calldata
-                    .iter()
-                    .map(|v| types::Felt::from_hex_unchecked(v))
-                    .collect(),
+                calldata: c.calldata.iter().map(|v| types::Felt::from(v)).collect(),
             })
             .collect();
 

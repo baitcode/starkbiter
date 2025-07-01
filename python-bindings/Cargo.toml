@@ -9,8 +9,10 @@ name = "python_bindings"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = "0.20.3"
-pyo3-asyncio = { version = "0.20", features = ["attributes", "tokio-runtime"] }
+num-bigint = "=0.4.6"
+pyo3 = { version = "=0.20.3", features = ["num-bigint"] }
+pyo3-asyncio = { version = "=0.20", features = ["attributes", "tokio-runtime"] }
+tracing-subscriber = "0.3.18"
 
 futures.workspace = true
 tokio.workspace = true

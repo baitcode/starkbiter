@@ -1,4 +1,5 @@
 use pyo3::{create_exception, exceptions::PyException, prelude::*};
+use starkbiter_bindings::ARGENT_v040_SIERRA;
 
 mod environment;
 mod middleware;
@@ -21,6 +22,12 @@ fn python_bindings(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(middleware::poll_subscription, m)?)?;
 
     m.add_class::<environment::ForkParams>()?;
+
+    let consts = PyModule::new(m.py(), "contracts")?;
+    m.add_submodule(&consts)?;
+
+    consts.add("ARGENT_v040_SIERRA", ARGENT_v040_SIERRA)?;
+
     Ok(())
 }
 

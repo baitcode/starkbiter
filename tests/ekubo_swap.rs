@@ -1,5 +1,4 @@
 use cainome::cairo_serde::U256;
-use ethers::etherscan::account;
 use starkbiter_bindings::{
     contracts_router_lite,
     contracts_swapper::{self, SwapData, I129},
@@ -134,7 +133,6 @@ async fn test_ekubo_swap_1eth_for_usdc_with_swapper() {
 
     let client = StarkbiterMiddleware::new(&env, Some("wow")).unwrap();
     client.set_next_block_gas(ALL_GAS_1).await.unwrap();
-    client.create_block().await.unwrap();
 
     let account = client
         .create_single_owner_account(
@@ -333,7 +331,6 @@ async fn test_ekubo_swap_1eth_for_usdc_with_router() {
 
     let client = StarkbiterMiddleware::new(&env, Some("wow")).unwrap();
     client.set_next_block_gas(ALL_GAS_1).await.unwrap();
-    client.create_block().await.unwrap();
 
     let account = client
         .create_single_owner_account(

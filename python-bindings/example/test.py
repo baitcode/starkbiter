@@ -25,29 +25,30 @@ balance_of_calldata = balance_of_function.encode({
     "account": "0x00000005dd3d2f4429af886cd1a3b08289dbcea99a294197e9eb43b0e0325b4b"
 })
 
-print("Function:", balance_of_function)
-print("BalanceOf:", dir(balance_of_calldata))
+# print("Function:", balance_of_function)
+# print("BalanceOf:", dir(balance_of_calldata))
 
 python_bindings.set_tracing()
 
 
 async def main():
+    print("Starting Starknet Python Bindings Example...", fork_params)
     env_label = await python_bindings.create_environment("test_env", MAINNET, fork_params)
     print("Environment created:", env_label)
     middleware_id = await python_bindings.create_middleware(env_label)
     print("Middleware created:", middleware_id)
-    # account_id = await python_bindings.create_account(middleware_id, "0x36078334509b514626504edc9fb252328d1a240e4e948bef8d0c08dff45927f")
-    # print("Account created:", account_id)
+    # # account_id = await python_bindings.create_account(middleware_id, "0x36078334509b514626504edc9fb252328d1a240e4e948bef8d0c08dff45927f")
+    # # print("Account created:", account_id)
 
-    print("asdasd")
-    print(balance_of_function.signature.hex())
+    # print("asdasd")
+    # print(balance_of_function.signature.hex())
 
     call = python_bindings.Call(
         ETH_ERC20_MAINNET,
         balance_of_function.signature.hex(),
         balance_of_calldata,
     )
-    res = await python_bindings.call(middleware_id, call, python_bindings.BlockId.from_number(1521205))
+    res = await python_bindings.call(middleware_id, call, python_bindings.BlockId.from_tag("latest"))
     print("Call result:", res)
 
 

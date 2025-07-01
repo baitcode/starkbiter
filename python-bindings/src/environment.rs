@@ -13,7 +13,7 @@ pub fn env_registry() -> &'static Mutex<HashMap<String, environment::Environment
 }
 
 #[pyclass]
-#[derive(FromPyObject)]
+#[derive(FromPyObject, Debug)]
 pub struct ForkParams {
     #[pyo3(get, set)]
     pub url: String,
@@ -60,6 +60,8 @@ pub fn create_environment<'p>(
             .with_label(&label_local);
 
         if let Some(fork) = fork {
+            tracing::info!("Forking configuration: {:?}", fork);
+
             let url = Url::parse(&fork.url).map_err(|e| {
                 PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
                     "Invalid URL provided for fork: {}",

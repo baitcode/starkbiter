@@ -421,7 +421,7 @@ pub fn set_storage<'p>(
             .set_storage_at(address, key, value)
             .await
             .map_err(|e| {
-                PyErr::new::<crate::ProviderError, _>(format!("Failed to top up balance: {}", e))
+                PyErr::new::<crate::ProviderError, _>(format!("Failed to set storage: {}", e))
             })?;
 
         return Ok(());
@@ -475,7 +475,7 @@ pub fn get_storage<'p>(
             .get_storage_at(address, key, block_id)
             .await
             .map_err(|e| {
-                PyErr::new::<crate::ProviderError, _>(format!("Failed to top up balance: {}", e))
+                PyErr::new::<crate::ProviderError, _>(format!("Failed to get storage: {}", e))
             })?;
 
         return Ok(data.to_hex_string());
@@ -513,7 +513,7 @@ pub fn call<'p>(
         })?;
 
         let data = middleware.call(call, block_id).await.map_err(|e| {
-            PyErr::new::<crate::ProviderError, _>(format!("Failed to top up balance: {}", e))
+            PyErr::new::<crate::ProviderError, _>(format!("Failed to perform call: {}", e))
         })?;
 
         let result: Vec<_> = data.iter().map(|i| i.to_hex_string()).collect();
@@ -547,7 +547,7 @@ pub fn impersonate<'p>(py: Python<'p>, middleware_id: &str, address: &str) -> Py
         })?;
 
         middleware.impersonate(address).await.map_err(|e| {
-            PyErr::new::<crate::ProviderError, _>(format!("Failed to top up balance: {}", e))
+            PyErr::new::<crate::ProviderError, _>(format!("Failed to start impersonation: {}", e))
         })?;
 
         return Ok(());
@@ -587,7 +587,10 @@ pub fn stop_impersonate<'p>(
             .stop_impersonating_account(address)
             .await
             .map_err(|e| {
-                PyErr::new::<crate::ProviderError, _>(format!("Failed to top up balance: {}", e))
+                PyErr::new::<crate::ProviderError, _>(format!(
+                    "Failed to stop impersonation: {}",
+                    e
+                ))
             })?;
 
         return Ok(());

@@ -5087,6 +5087,7 @@ dependencies = [
  "starknet-core",
  "starknet-signers",
  "tokio",
+ "tracing",
  "tracing-subscriber",
  "uuid 1.17.0",
 ]

@@ -2,7 +2,7 @@ use std::num::NonZero;
 
 use starkbiter_bindings::{
     erc_20_mintable_oz0::{ERC20ComponentEvent, Erc20MintableOZ0},
-    ARGENT_v040_SIERRA,
+    ARGENT_V040_SIERRA,
 };
 use starkbiter_core::middleware::traits::Middleware;
 
@@ -82,7 +82,7 @@ impl Behavior<ERC20ComponentEvent> for TokenRequester {
         let message = messager.get_next().await.unwrap();
         self.token_data = serde_json::from_str::<TokenData>(&message.data).unwrap();
 
-        let argent_class_hash = client.declare_contract(ARGENT_v040_SIERRA).await?;
+        let argent_class_hash = client.declare_contract(ARGENT_V040_SIERRA).await?;
 
         let account = client
             .create_single_owner_account(

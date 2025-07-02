@@ -18,6 +18,7 @@ pub enum StarkbiterCoreError {
     #[error("Account already exists!")]
     AccountCreationError,
 
+    /// Failed to calculate the account address.
     #[error("Cant calculate account address!")]
     AccountAddressError,
 

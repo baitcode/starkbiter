@@ -19,14 +19,14 @@
 
 use std::thread::{self, JoinHandle};
 
-use crossbeam_channel::{bounded, unbounded, Receiver, SendError, Sender};
+use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 use starknet::providers::Url;
-use starknet_core::types::{self as core_types, Hash256};
+use starknet_core::types as core_types;
 use starknet_devnet_core::constants::{self as devnet_constants};
 
 use starknet_devnet_core::error::Error as DevnetError;
 use starknet_devnet_core::starknet::starknet_config::ForkConfig;
-use starknet_devnet_core::state::{CustomState, CustomStateReader, StarknetState, State};
+use starknet_devnet_core::state::{CustomState, CustomStateReader, State};
 use starknet_devnet_core::{
     starknet::{starknet_config::StarknetConfig, Starknet},
     state::StateReader,
@@ -34,7 +34,6 @@ use starknet_devnet_core::{
 use starknet_devnet_types::chain_id::ChainId;
 use starknet_devnet_types::contract_class::ContractClass;
 
-use starknet_devnet_types::error::Error;
 use starknet_devnet_types::rpc::block::BlockResult;
 use starknet_devnet_types::rpc::gas_modification::GasModificationRequest;
 use starknet_devnet_types::rpc::transaction_receipt::TransactionReceipt;
@@ -49,7 +48,7 @@ use starknet_devnet_types::starknet_api::transaction::TransactionHasher;
 use starknet_devnet_types::traits::HashProducer;
 use starknet_devnet_types::{contract_address::ContractAddress, num_bigint::BigUint};
 
-use starknet_devnet_types::starknet_api::core::{self as api_core, PatriciaKey};
+use starknet_devnet_types::starknet_api::core as api_core;
 use starknet_devnet_types::starknet_api::state::StorageKey;
 
 use tokio::sync::broadcast::channel;
@@ -326,9 +325,9 @@ async fn process_instructions(
     trace!("Devnet created");
     // Initialize counters that are returned on some receipts.
     // Loop over the instructions sent through the socket.
-    while let Ok((instruction, sender)) = instruction_receiver.recv() {
-        let mut stop = false;
+    let mut stop = false;
 
+    while let Ok((instruction, sender)) = instruction_receiver.recv() {
         if stop {
             break;
         }
@@ -339,7 +338,10 @@ async fn process_instructions(
                     trace!("Environment. Received GetSpecVersion instruction");
                     let outcome = Outcome::Node(NodeOutcome::SpecVersion("unknown".to_string()));
                     // TODO: handle send errors. Probably stop the environment.
-                    sender.send(Ok(outcome));
+                    if let Err(e) = sender.send(Ok(outcome)) {
+                        error!("Failed to send GetSpecVersion outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::GetBlockWithTxHashes { block_id } => {
                     trace!(
@@ -365,7 +367,11 @@ async fn process_instructions(
                                 };
                             Outcome::Node(NodeOutcome::GetBlockWithTxHashes(outcome))
                         });
-                    sender.send(outcome);
+
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send GetBlockWithTxHashes outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::GetBlockWithTxs { block_id } => {
                     trace!(
@@ -391,7 +397,10 @@ async fn process_instructions(
                             Outcome::Node(NodeOutcome::GetBlockWithTxs(outcome))
                         });
 
-                    sender.send(outcome);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send GetBlockWithTxs outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::GetBlockWithReceipts { block_id } => {
                     trace!(
@@ -417,7 +426,10 @@ async fn process_instructions(
                                 };
                             Outcome::Node(NodeOutcome::GetBlockWithReceipts(outcome))
                         });
-                    sender.send(outcome);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send GetBlockWithReceipts outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::GetStateUpdate { block_id } => {
                     trace!(
@@ -430,7 +442,10 @@ async fn process_instructions(
                         .map_err(|e| StarkbiterCoreError::DevnetError(e))
                         .map(|res| Outcome::Node(NodeOutcome::GetStateUpdate(res.into())));
 
-                    sender.send(outcome);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send GetStateUpdate outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::GetStorageAt {
                     contract_address,
@@ -438,8 +453,11 @@ async fn process_instructions(
                     // TODO: hmmmm, something is off
                     block_id,
                 } => {
+                    let operation = "GetStorageAt";
+
                     trace!(
-                        "Environment. Received GetStorageAt instruction: {:?} {:?} {:?}",
+                        "Environment. Received {} instruction: {:?} {:?} {:?}",
+                        operation,
                         contract_address,
                         key,
                         block_id
@@ -450,29 +468,44 @@ async fn process_instructions(
                         api_core::ContractAddress::try_from(*contract_address);
 
                     if let Err(err) = maybe_contract_address {
-                        sender.send(Err(StarkbiterCoreError::DevnetError(
+                        let outcome = Err(StarkbiterCoreError::DevnetError(
                             DevnetError::StarknetApiError(err),
-                        )));
+                        ));
+
+                        if let Err(e) = sender.send(outcome) {
+                            error!("Failed to send {} outcome: {:?}", operation, e);
+                            stop = true;
+                        }
+
                         continue;
                     }
 
                     let maybe_storage_key = StorageKey::try_from(*key);
 
                     if let Err(err) = maybe_storage_key {
-                        sender.send(Err(StarkbiterCoreError::DevnetError(
+                        let outcome = Err(StarkbiterCoreError::DevnetError(
                             DevnetError::StarknetApiError(err),
-                        )));
+                        ));
+
+                        if let Err(e) = sender.send(outcome) {
+                            error!("Failed to send {} outcome: {:?}", operation, e);
+                            stop = true;
+                        }
+
                         continue;
                     }
 
-                    let result = state
+                    let outcome = state
                         .get_storage_at(maybe_contract_address.unwrap(), maybe_storage_key.unwrap())
                         .map_err(|e| {
                             StarkbiterCoreError::DevnetError(DevnetError::BlockifierStateError(e))
                         })
                         .map(|value| Outcome::Node(NodeOutcome::GetStorageAt(value)));
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send GetStorageAt outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::GetMessagesStatus { transaction_hash } => {
                     trace!(
@@ -489,7 +522,10 @@ async fn process_instructions(
                         })
                         .unwrap_or(Outcome::Node(NodeOutcome::GetMessagesStatus(vec![])));
 
-                    sender.send(Ok(outcome));
+                    if let Err(e) = sender.send(Ok(outcome)) {
+                        error!("Failed to send GetMessagesStatus outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::GetTransactionStatus { transaction_hash } => {
                     trace!(
@@ -500,18 +536,27 @@ async fn process_instructions(
                     let hash = core_types::Felt::try_from(transaction_hash);
 
                     if let Err(e) = hash {
-                        sender.send(Err(StarkbiterCoreError::InternalError(e.to_string())));
+                        let outcome = Err(StarkbiterCoreError::InternalError(e.to_string()));
+
+                        if let Err(e) = sender.send(outcome) {
+                            error!("Failed to send GetTransactionStatus outcome: {:?}", e);
+                            stop = true;
+                        }
+
                         continue;
                     }
 
-                    let result = starknet
+                    let outcome = starknet
                         .get_transaction_execution_and_finality_status(hash.unwrap())
                         .map_err(|e| StarkbiterCoreError::DevnetError(e))
                         .map(|status| {
                             Outcome::Node(NodeOutcome::GetTransactionStatus(status.into()))
                         });
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send GetTransactionStatus outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::GetTransactionByHash { transaction_hash } => {
                     trace!(
@@ -522,11 +567,17 @@ async fn process_instructions(
                     let hash = core_types::Felt::try_from(transaction_hash);
 
                     if let Err(e) = hash {
-                        sender.send(Err(StarkbiterCoreError::InternalError(e.to_string())));
+                        let outcome = Err(StarkbiterCoreError::InternalError(e.to_string()));
+
+                        if let Err(e) = sender.send(outcome) {
+                            error!("Failed to send GetTransactionByHash outcome: {:?}", e);
+                            stop = true;
+                        }
+
                         continue;
                     }
 
-                    let result = starknet
+                    let outcome = starknet
                         .get_transaction_by_hash(hash.unwrap())
                         .map_err(|e| StarkbiterCoreError::DevnetError(e))
                         .map(|transaction| {
@@ -535,7 +586,10 @@ async fn process_instructions(
                             ))
                         });
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send GetTransactionByHash outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::GetTransactionByBlockIdAndIndex { block_id, index } => {
                     trace!(
@@ -544,7 +598,7 @@ async fn process_instructions(
                         index
                     );
 
-                    let result = starknet
+                    let outcome = starknet
                         .get_transaction_by_block_id_and_index(&block_id, *index)
                         .map_err(|e| StarkbiterCoreError::DevnetError(e))
                         .map(|tx| {
@@ -553,7 +607,10 @@ async fn process_instructions(
                             ))
                         });
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send GetTransactionByHash outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::GetTransactionReceipt { transaction_hash } => {
                     trace!(
@@ -564,11 +621,17 @@ async fn process_instructions(
                     let hash = core_types::Felt::try_from(transaction_hash);
 
                     if let Err(e) = hash {
-                        sender.send(Err(StarkbiterCoreError::InternalError(e.to_string())));
+                        let outcome = Err(StarkbiterCoreError::InternalError(e.to_string()));
+
+                        if let Err(e) = sender.send(outcome) {
+                            error!("Failed to send GetTransactionReceipt outcome: {:?}", e);
+                            stop = true;
+                        }
+
                         continue;
                     }
 
-                    let result = starknet
+                    let outcome = starknet
                         .get_transaction_receipt_by_hash(&hash.unwrap())
                         .map_err(|e| StarkbiterCoreError::DevnetError(e))
                         .map(|receipt| {
@@ -577,7 +640,10 @@ async fn process_instructions(
                             ))
                         });
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send GetTransactionReceipt outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::GetClass {
                     block_id,
@@ -589,7 +655,7 @@ async fn process_instructions(
                         class_hash
                     );
 
-                    let result = starknet
+                    let outcome = starknet
                         .get_class(&block_id, *class_hash)
                         .map_err(|e| StarkbiterCoreError::DevnetError(e))
                         .map(|klass| {
@@ -600,7 +666,10 @@ async fn process_instructions(
                             ))
                         });
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send GetClass outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::GetClassHashAt {
                     block_id,
@@ -615,16 +684,25 @@ async fn process_instructions(
                     let contract_address = ContractAddress::new(*contract_address);
 
                     if let Err(e) = contract_address {
-                        sender.send(Err(StarkbiterCoreError::InternalError(e.to_string())));
+                        let outcome = Err(StarkbiterCoreError::InternalError(e.to_string()));
+
+                        if let Err(e) = sender.send(outcome) {
+                            error!("Failed to send GetClass outcome: {:?}", e);
+                            stop = true;
+                        }
+
                         continue;
                     }
 
-                    let result = starknet
+                    let outcome = starknet
                         .get_class_hash_at(&block_id, contract_address.unwrap())
                         .map_err(|e| StarkbiterCoreError::DevnetError(e))
                         .map(|class_hash| Outcome::Node(NodeOutcome::GetClassHashAt(class_hash)));
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send GetClass outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::GetClassAt {
                     block_id,
@@ -639,7 +717,7 @@ async fn process_instructions(
                     let contract_address =
                         ContractAddress::new(*contract_address).expect("Should always work");
 
-                    let result = starknet
+                    let outcome = starknet
                         .get_class_at(&block_id, contract_address)
                         .map_err(|e| StarkbiterCoreError::DevnetError(e))
                         .map(|contract_class| {
@@ -650,7 +728,10 @@ async fn process_instructions(
                             ))
                         });
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send GetClass outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::GetBlockTransactionCount { block_id } => {
                     trace!(
@@ -658,29 +739,35 @@ async fn process_instructions(
                         block_id
                     );
 
-                    let result = starknet
+                    let outcome = starknet
                         .get_block_txs_count(&block_id)
                         .map_err(|e| StarkbiterCoreError::DevnetError(e))
                         .map(|count| Outcome::Node(NodeOutcome::GetBlockTransactionCount(count)));
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send GetBlockTransactionCount outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::BlockNumber => {
                     trace!("Environment. Received BlockNumber instruction");
 
-                    let result = starknet
+                    let outcome = starknet
                         .get_latest_block()
                         .map_err(|e| StarkbiterCoreError::DevnetError(e))
                         .map(|block| {
                             Outcome::Node(NodeOutcome::BlockNumber(block.block_number().0))
                         });
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send BlockNumber outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::BlockHashAndNumber => {
                     trace!("Environment. Received BlockHashAndNumber instruction");
 
-                    let result = starknet
+                    let outcome = starknet
                         .get_latest_block()
                         .map_err(|e| StarkbiterCoreError::DevnetError(e))
                         .map(|block| {
@@ -692,19 +779,31 @@ async fn process_instructions(
                             ))
                         });
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send BlockHashAndNumber outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::ChainId => {
                     trace!("Environment. Received ChainId instruction");
 
                     let chain_id = starknet_config.chain_id;
-                    sender.send(Ok(Outcome::Node(NodeOutcome::ChainId(chain_id.into()))));
+                    let outcome = Ok(Outcome::Node(NodeOutcome::ChainId(chain_id.into())));
+
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send ChainId outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::Syncing => {
-                    let result = Ok(Outcome::Node(NodeOutcome::Syncing(
+                    let outcome = Ok(Outcome::Node(NodeOutcome::Syncing(
                         core_types::SyncStatusType::NotSyncing,
                     )));
-                    sender.send(result);
+
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send Syncing outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::GetEvents {
                     filter,
@@ -730,7 +829,7 @@ async fn process_instructions(
                         50_usize // TODO: Default chunk size. Move to config
                     };
 
-                    let result = starknet
+                    let outcome = starknet
                         .get_events(
                             filter.from_block,
                             filter.to_block,
@@ -760,7 +859,10 @@ async fn process_instructions(
                             Outcome::Node(NodeOutcome::GetEvents(page))
                         });
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send GetEvents outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::Call { request, block_id } => {
                     trace!(
@@ -769,7 +871,7 @@ async fn process_instructions(
                         block_id
                     );
 
-                    let result = starknet
+                    let outcome = starknet
                         .call(
                             block_id,
                             request.contract_address,
@@ -779,7 +881,10 @@ async fn process_instructions(
                         .map_err(|e| StarkbiterCoreError::DevnetError(e))
                         .map(|res| Outcome::Node(NodeOutcome::Call(res)));
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send Call outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::AddInvokeTransaction { transaction } => {
                     trace!(
@@ -790,7 +895,7 @@ async fn process_instructions(
                     let converted_transaction =
                         BroadcastedInvokeTransaction::V3(transaction.clone().into());
 
-                    let result = starknet
+                    let outcome = starknet
                         .add_invoke_transaction(converted_transaction)
                         .map_err(|e| StarkbiterCoreError::DevnetError(e))
                         .map(|tx_hash| {
@@ -801,7 +906,10 @@ async fn process_instructions(
                             ))
                         });
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send AddInvokeTransaction outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::AddDeclareTransaction { transaction } => {
                     trace!(
@@ -809,7 +917,7 @@ async fn process_instructions(
                         transaction
                     );
 
-                    let result = starknet
+                    let outcome = starknet
                         .add_declare_transaction(BroadcastedDeclareTransaction::V3(Box::new(
                             transaction.clone().into(),
                         )))
@@ -823,7 +931,10 @@ async fn process_instructions(
                             ))
                         });
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send AddDeclareTransaction outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::AddDeployAccountTransaction { transaction } => {
                     trace!(
@@ -831,7 +942,7 @@ async fn process_instructions(
                         transaction
                     );
 
-                    let result = starknet
+                    let outcome = starknet
                         .add_deploy_account_transaction(BroadcastedDeployAccountTransaction::V3(
                             transaction.clone().into(),
                         ))
@@ -845,7 +956,13 @@ async fn process_instructions(
                             ))
                         });
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!(
+                            "Failed to send AddDeployAccountTransaction outcome: {:?}",
+                            e
+                        );
+                        stop = true;
+                    }
                 }
                 NodeInstruction::TraceTransaction { transaction_hash } => {
                     trace!(
@@ -853,12 +970,15 @@ async fn process_instructions(
                         transaction_hash
                     );
 
-                    let result = starknet
+                    let outcome = starknet
                         .get_transaction_trace_by_hash(*transaction_hash)
                         .map_err(|e| StarkbiterCoreError::DevnetError(e))
                         .map(|trace| Outcome::Node(NodeOutcome::TraceTransaction(trace.into())));
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send TraceTransaction outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::SimulateTransactions {
                     block_id,
@@ -872,7 +992,7 @@ async fn process_instructions(
                         simulation_flags
                     );
 
-                    let result = starknet
+                    let outcome = starknet
                         .simulate_transactions(
                             &block_id,
                             transactions
@@ -890,7 +1010,10 @@ async fn process_instructions(
                             ))
                         });
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send SimulateTransactions outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::TraceBlockTransactions { block_id } => {
                     trace!(
@@ -898,7 +1021,7 @@ async fn process_instructions(
                         block_id
                     );
 
-                    let result = starknet
+                    let outcome = starknet
                         .get_transaction_traces_from_block(&block_id)
                         .map_err(|e| StarkbiterCoreError::DevnetError(e))
                         .map(|res| {
@@ -907,7 +1030,10 @@ async fn process_instructions(
                             ))
                         });
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send TraceBlockTransactions outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::EstimateFee {
                     request,
@@ -931,14 +1057,17 @@ async fn process_instructions(
                     let fees_result =
                         starknet.estimate_fee(&block_id, txs, &simulation_flags.as_slice());
 
-                    let result = match fees_result {
+                    let outcome = match fees_result {
                         Err(e) => Err(StarkbiterCoreError::DevnetError(e)),
                         Ok(fees) => Ok(Outcome::Node(NodeOutcome::EstimateFee(
                             fees.iter().cloned().map(Into::into).collect(),
                         ))),
                     };
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send TraceBlockTransactions outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::EstimateMessageFee { message, block_id } => {
                     trace!(
@@ -947,12 +1076,15 @@ async fn process_instructions(
                         block_id
                     );
 
-                    let result = starknet
+                    let outcome = starknet
                         .estimate_message_fee(&block_id, message.clone())
                         .map_err(|e| StarkbiterCoreError::DevnetError(e))
                         .map(|fee| Outcome::Node(NodeOutcome::EstimateMessageFee(fee.into())));
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send EstimateMessageFee outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 NodeInstruction::GetNonce {
                     block_id,
@@ -967,19 +1099,22 @@ async fn process_instructions(
                     let contract_address =
                         ContractAddress::new(*contract_address).expect("Should always work.");
 
-                    let result = starknet
+                    let outcome = starknet
                         .contract_nonce_at_block(&block_id, contract_address)
                         .map_err(|e| StarkbiterCoreError::DevnetError(e))
                         .map(|nonce| Outcome::Node(NodeOutcome::GetNonce(nonce.into())));
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send GetNonce outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
             },
             Instruction::Cheat(ref cheat_instruction) => match cheat_instruction {
                 instruction::CheatInstruction::SetNextBlockGas { gas_modification } => {
                     trace!("Environment. Received SetNextBlockGas instruction");
 
-                    let result = starknet
+                    let outcome = starknet
                         .set_next_block_gas(gas_modification.clone())
                         .map_err(|e| StarkbiterCoreError::DevnetError(e))
                         .map(|modification| {
@@ -988,7 +1123,10 @@ async fn process_instructions(
                             ))
                         });
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send SetNextBlockGas outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 instruction::CheatInstruction::DeclareContract { sierra_json } => {
                     trace!("Environment. Received DeclareContract instruction: ",);
@@ -996,7 +1134,13 @@ async fn process_instructions(
                     let contract_class = ContractClass::cairo_1_from_sierra_json_str(&sierra_json);
 
                     if let Err(err) = contract_class {
-                        sender.send(Err(StarkbiterCoreError::InternalError(err.to_string())));
+                        let outcome = Err(StarkbiterCoreError::InternalError(err.to_string()));
+
+                        if let Err(e) = sender.send(outcome) {
+                            error!("Failed to send DeclareContract outcome: {:?}", e);
+                            stop = true;
+                        }
+
                         continue;
                     }
 
@@ -1004,7 +1148,13 @@ async fn process_instructions(
                     let class_hash_result = sierra_contract_class.generate_hash();
 
                     if let Err(err) = class_hash_result {
-                        sender.send(Err(StarkbiterCoreError::InternalError(err.to_string())));
+                        let outcome = Err(StarkbiterCoreError::InternalError(err.to_string()));
+
+                        if let Err(e) = sender.send(outcome) {
+                            error!("Failed to send DeclareContract outcome: {:?}", e);
+                            stop = true;
+                        }
+
                         continue;
                     }
 
@@ -1020,7 +1170,13 @@ async fn process_instructions(
                             .predeclare_contract_class(class_hash, sierra_contract_class.clone());
 
                         if let Err(e) = declare_result {
-                            sender.send(Err(StarkbiterCoreError::InternalError(e.to_string())));
+                            let outcome = Err(StarkbiterCoreError::InternalError(e.to_string()));
+
+                            if let Err(e) = sender.send(outcome) {
+                                error!("Failed to send DeclareContract outcome: {:?}", e);
+                                stop = true;
+                            }
+
                             continue;
                         }
                     }
@@ -1030,15 +1186,23 @@ async fn process_instructions(
                         .map_err(|e| StarkbiterCoreError::DevnetError(e.into()));
 
                     if let Err(e) = commit_result {
-                        sender.send(Err(e));
+                        if let Err(e) = sender.send(Err(e)) {
+                            error!("Failed to send DeclareContract outcome: {:?}", e);
+                            stop = true;
+                        }
+
                         continue;
                     }
 
                     let class_hash = api_core::ClassHash(class_hash);
 
-                    sender.send(Ok(Outcome::Cheat(
+                    let outcome = Ok(Outcome::Cheat(
                         instruction::CheatcodesReturn::DeclareContract(class_hash.0),
-                    )));
+                    ));
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send DeclareContract outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 instruction::CheatInstruction::CreateAccount {
                     signing_key,
@@ -1067,9 +1231,15 @@ async fn process_instructions(
                     );
 
                     if let Err(e) = account_address {
-                        sender.send(Err(StarkbiterCoreError::DevnetError(
+                        let outcome = Err(StarkbiterCoreError::DevnetError(
                             DevnetError::StarknetApiError(e),
-                        )));
+                        ));
+
+                        if let Err(e) = sender.send(outcome) {
+                            error!("Failed to send CreateAccount outcome: {:?}", e);
+                            stop = true;
+                        }
+
                         continue;
                     }
 
@@ -1080,21 +1250,29 @@ async fn process_instructions(
 
                     {
                         let mut state = starknet.get_state();
-                        // Same as Top up balance, except only strk token is minted
                         trace!("Minting tokens...");
-                        utils::mint_tokens_in_erc20_contract(
+                        if let Err(e) = utils::mint_tokens_in_erc20_contract(
                             &mut state,
                             devnet_constants::STRK_ERC20_CONTRACT_ADDRESS,
                             account_address.unwrap().into(),
                             prefunded_balance.clone(),
-                        );
-                        starknet.commit_diff();
+                        ) {
+                            error!("Error minting tokens for new account: {:?}", e);
+                        }
+                        if let Err(e) = starknet.commit_diff() {
+                            error!("Error commiting diff to devnet: {:?}", e);
+                        }
                     }
 
                     if !is_account_contract_declared {
-                        sender.send(Err(StarkbiterCoreError::DevnetError(
+                        let outcome = Err(StarkbiterCoreError::DevnetError(
                             DevnetError::ContractClassLoadError("Not declared".to_string()),
-                        )));
+                        ));
+                        if let Err(e) = sender.send(outcome) {
+                            error!("Failed to send CreateAccount outcome: {:?}", e);
+                            stop = true;
+                        }
+
                         continue;
                     }
 
@@ -1146,9 +1324,15 @@ async fn process_instructions(
                     );
 
                     if let Err(e) = hash {
-                        sender.send(Err(StarkbiterCoreError::DevnetError(
+                        let outcome = Err(StarkbiterCoreError::DevnetError(
                             DevnetError::StarknetApiError(e),
-                        )));
+                        ));
+
+                        if let Err(e) = sender.send(outcome) {
+                            error!("Failed to send CreateAccount outcome: {:?}", e);
+                            stop = true;
+                        }
+
                         continue;
                     }
 
@@ -1161,7 +1345,7 @@ async fn process_instructions(
 
                     let tx = BroadcastedDeployAccountTransactionV3::from(tx);
 
-                    let result = starknet
+                    let outcome = starknet
                         .add_deploy_account_transaction(BroadcastedDeployAccountTransaction::V3(tx))
                         .map_err(|e| StarkbiterCoreError::DevnetError(e))
                         .map(|(_, address)| {
@@ -1170,7 +1354,10 @@ async fn process_instructions(
                             ))
                         });
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send CreateAccount outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 instruction::CheatInstruction::CreateBlock => {
                     trace!("Environment. Received CreateBlock instruction");
@@ -1182,7 +1369,11 @@ async fn process_instructions(
                         .map_err(|e| StarkbiterCoreError::DevnetError(e));
 
                     if let Err(e) = create_block_result {
-                        sender.send(Err(e));
+                        if let Err(e) = sender.send(Err(e)) {
+                            error!("Failed to send CreateBlock outcome: {:?}", e);
+                            stop = true;
+                        }
+
                         continue;
                     }
 
@@ -1196,7 +1387,11 @@ async fn process_instructions(
                         .map_err(|e| StarkbiterCoreError::DevnetError(e));
 
                     if let Err(e) = events {
-                        sender.send(Err(e));
+                        if let Err(e) = sender.send(Err(e)) {
+                            error!("Failed to send CreateBlock outcome: {:?}", e);
+                            stop = true;
+                        }
+
                         continue;
                     }
 
@@ -1208,9 +1403,11 @@ async fn process_instructions(
 
                     event_broadcaster.send(converted).unwrap_or_default();
 
-                    sender.send(Ok(Outcome::Cheat(
-                        instruction::CheatcodesReturn::CreateBlock,
-                    )));
+                    let outcome = Ok(Outcome::Cheat(instruction::CheatcodesReturn::CreateBlock));
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send CreateBlock outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 instruction::CheatInstruction::L1Message {
                     l1_handler_transaction,
@@ -1220,12 +1417,15 @@ async fn process_instructions(
                         l1_handler_transaction
                     );
 
-                    let res = starknet
+                    let outcome = starknet
                         .add_l1_handler_transaction(l1_handler_transaction.clone())
                         .map_err(|e| StarkbiterCoreError::DevnetError(e))
                         .map(|res| Outcome::Cheat(instruction::CheatcodesReturn::L1Message(res)));
 
-                    sender.send(res);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send L1Message outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 instruction::CheatInstruction::TopUpBalance {
                     receiver,
@@ -1243,13 +1443,23 @@ async fn process_instructions(
 
                     let receiver = ContractAddress::new(receiver.clone());
                     if let Err(e) = receiver {
-                        sender.send(Err(StarkbiterCoreError::InternalError(e.to_string())));
+                        let outcome = Err(StarkbiterCoreError::InternalError(e.to_string()));
+                        if let Err(e) = sender.send(outcome) {
+                            error!("Failed to send TopUpBalance outcome: {:?}", e);
+                            stop = true;
+                        }
+
                         continue;
                     }
 
                     let token_data = get_token_data(&starknet_config.chain_id, token);
                     if let Err(e) = token_data {
-                        sender.send(Err(StarkbiterCoreError::InternalError(e.to_string())));
+                        let outcome = Err(StarkbiterCoreError::InternalError(e.to_string()));
+                        if let Err(e) = sender.send(outcome) {
+                            error!("Failed to send TopUpBalance outcome: {:?}", e);
+                            stop = true;
+                        }
+
                         continue;
                     }
 
@@ -1263,19 +1473,29 @@ async fn process_instructions(
                     );
 
                     if let Err(e) = mint_result {
-                        sender.send(Err(e));
+                        if let Err(e) = sender.send(Err(e)) {
+                            error!("Failed to send TopUpBalance outcome: {:?}", e);
+                            stop = true;
+                        }
+
                         continue;
                     }
 
                     let res = starknet.commit_diff();
                     if let Err(e) = res {
-                        sender.send(Err(StarkbiterCoreError::DevnetError(e)));
+                        let outcome = Err(StarkbiterCoreError::DevnetError(e));
+                        if let Err(e) = sender.send(outcome) {
+                            error!("Failed to send TopUpBalance outcome: {:?}", e);
+                            stop = true;
+                        }
                         continue;
                     }
 
-                    sender.send(Ok(Outcome::Cheat(
-                        instruction::CheatcodesReturn::TopUpBalance,
-                    )));
+                    let outcome = Ok(Outcome::Cheat(instruction::CheatcodesReturn::TopUpBalance));
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send TopUpBalance outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 instruction::CheatInstruction::Impersonate { address } => {
                     trace!(
@@ -1283,12 +1503,15 @@ async fn process_instructions(
                         address
                     );
 
-                    let result = starknet
+                    let outcome = starknet
                         .impersonate_account(ContractAddress::new(address.clone()).unwrap())
                         .map_err(|e| StarkbiterCoreError::DevnetError(e))
                         .map(|_| Outcome::Cheat(instruction::CheatcodesReturn::Impersonate));
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send Impersonate outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 instruction::CheatInstruction::StopImpersonating { address } => {
                     trace!(
@@ -1300,9 +1523,14 @@ async fn process_instructions(
                         &ContractAddress::new(address.clone()).unwrap(),
                     );
 
-                    sender.send(Ok(Outcome::Cheat(
+                    let outcome = Ok(Outcome::Cheat(
                         instruction::CheatcodesReturn::StopImpersonating,
-                    )));
+                    ));
+
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send Impersonate outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 instruction::CheatInstruction::SetStorageAt {
                     address,
@@ -1321,22 +1549,34 @@ async fn process_instructions(
                     let maybe_address = api_core::ContractAddress::try_from(*address);
 
                     if let Err(err) = maybe_address {
-                        sender.send(Err(StarkbiterCoreError::DevnetError(
+                        let outcome = Err(StarkbiterCoreError::DevnetError(
                             DevnetError::StarknetApiError(err),
-                        )));
+                        ));
+
+                        if let Err(e) = sender.send(outcome) {
+                            error!("Failed to send SetStorageAt outcome: {:?}", e);
+                            stop = true;
+                        }
+
                         continue;
                     }
 
                     let maybe_storage_key = StorageKey::try_from(*key);
 
                     if let Err(err) = maybe_storage_key {
-                        sender.send(Err(StarkbiterCoreError::DevnetError(
+                        let outcome = Err(StarkbiterCoreError::DevnetError(
                             DevnetError::StarknetApiError(err),
-                        )));
+                        ));
+
+                        if let Err(e) = sender.send(outcome) {
+                            error!("Failed to send SetStorageAt outcome: {:?}", e);
+                            stop = true;
+                        }
+
                         continue;
                     }
 
-                    let result = state
+                    let outcome = state
                         .state
                         .set_storage_at(maybe_address.unwrap(), maybe_storage_key.unwrap(), *value)
                         .map_err(|e| {
@@ -1344,14 +1584,17 @@ async fn process_instructions(
                         })
                         .map(|_| Outcome::Cheat(instruction::CheatcodesReturn::SetStorageAt));
 
-                    sender.send(result);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send SetStorageAt outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
                 instruction::CheatInstruction::GetDeployedContractAddress { tx_hash } => {
                     let receipt = starknet
                         .get_transaction_receipt_by_hash(tx_hash)
                         .map_err(|e| StarkbiterCoreError::DevnetError(e))?;
 
-                    let res = if let TransactionReceipt::Deploy(deploy_receipt) = receipt {
+                    let outcome = if let TransactionReceipt::Deploy(deploy_receipt) = receipt {
                         Ok(Outcome::Cheat(
                             instruction::CheatcodesReturn::GetDeployedContractAddress(
                                 deploy_receipt.contract_address.into(),
@@ -1365,7 +1608,10 @@ async fn process_instructions(
                         ))
                     };
 
-                    sender.send(res);
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send GetDeployedContractAddress outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
             },
             Instruction::System(ref system_instruction) => match system_instruction {
@@ -1373,9 +1619,11 @@ async fn process_instructions(
                     trace!("Environment. Received Stop instruction");
                     stop = true;
 
-                    sender.send(Ok(Outcome::System(
-                        instruction::SystemInstructionOutcome::Stop,
-                    )));
+                    let outcome = Ok(Outcome::System(instruction::SystemInstructionOutcome::Stop));
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send Stop outcome: {:?}", e);
+                        stop = true;
+                    }
                 }
             },
         };

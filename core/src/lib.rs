@@ -34,15 +34,10 @@ pub mod errors;
 pub mod middleware;
 pub mod tokens;
 
-use std::{
-    collections::{BTreeMap, HashMap},
-    convert::Infallible,
-    fmt::Debug,
-    sync::{Arc, RwLock},
-};
+use std::{fmt::Debug, sync::Arc};
 
 use serde::{Deserialize, Serialize};
-use tokio::sync::broadcast::{Receiver as BroadcastReceiver, Sender as BroadcastSender};
-use tracing::{debug, error, info, trace, warn};
+use tokio::sync::broadcast::Sender as BroadcastSender;
+use tracing::{error, info, trace, warn};
 
 use crate::errors::StarkbiterCoreError;

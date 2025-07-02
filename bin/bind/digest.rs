@@ -1,4 +1,3 @@
-use config::{Config, ConfigError};
 use serde::Deserialize;
 
 use super::*;
@@ -28,15 +27,6 @@ impl StarkbiterConfig {
             submodules: true,
             ignore_interfaces: false,
         }
-    }
-}
-
-impl StarkbiterConfig {
-    pub(crate) fn new() -> Result<Self, ConfigError> {
-        let s = Config::builder()
-            .add_source(config::File::with_name("arbiter.toml"))
-            .build()?;
-        Ok(s.into())
     }
 }
 

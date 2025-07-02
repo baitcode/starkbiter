@@ -1,7 +1,7 @@
 use futures::StreamExt;
 use starkbiter_bindings::{
     erc_20_mintable_oz0::{ERC20ComponentEvent, Erc20MintableOZ0},
-    ARGENT_v040_SIERRA, ERC20_CONTRACT_SIERRA,
+    ARGENT_V040_SIERRA, ERC20_CONTRACT_SIERRA,
 };
 use starkbiter_core::{
     environment::Environment,
@@ -62,7 +62,7 @@ async fn test_create_account_and_use_it_to_deploy_udc_erc20_contract() {
 
     let client = StarkbiterMiddleware::new(&env, Some("wow")).unwrap();
 
-    let argent_class_hash = client.declare_contract(ARGENT_v040_SIERRA).await.unwrap();
+    let argent_class_hash = client.declare_contract(ARGENT_V040_SIERRA).await.unwrap();
 
     client.set_next_block_gas(ALL_GAS_1).await.unwrap();
 

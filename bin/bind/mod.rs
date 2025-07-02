@@ -2,7 +2,6 @@
 use std::{fs, path::PathBuf};
 
 mod digest;
-use self::digest::StarkbiterConfig;
 use cainome::rs::Abigen;
 use inflector::Inflector;
 
@@ -19,10 +18,6 @@ use inflector::Inflector;
 ///   tool is not installed.
 
 pub(crate) fn cainome_bind(src: &str, dest: &str, use_debug: &bool) -> std::io::Result<()> {
-    let arbiter_config = StarkbiterConfig::new().unwrap_or_default();
-    // TODO: ???
-    // let project_bidnings_output_path = arbiter_config.bindings_path;
-
     let derives = if *use_debug {
         vec!["Debug", "PartialEq"]
     } else {

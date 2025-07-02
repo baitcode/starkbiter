@@ -2,16 +2,11 @@
 //! communicate instructions and their outcomes between the
 //! [`middleware::StarkbiterMiddleware`] and the [`Environment`].
 
-use std::alloc::System;
-
-use starknet::{
-    core::types::Felt,
-    signers::{SigningKey, VerifyingKey},
-};
+use starknet::{core::types::Felt, signers::SigningKey};
 
 use starknet_core::types as core_types;
 use starknet_devnet_types::{
-    felt::{Calldata, TransactionHash},
+    felt::TransactionHash,
     num_bigint::BigUint,
     rpc::{
         gas_modification::GasModification, transaction_receipt::TransactionReceipt,
@@ -215,13 +210,19 @@ pub enum Instruction {
     System(SystemInstruction),
 }
 
+/// Represents system-level instructions that can be sent to the [`Environment`] via the [`Socket`].
+///
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SystemInstruction {
+    /// Stops the environment, stops listening for new events.
     Stop,
 }
 
+/// Represents the possible outcomes returned from processing [`SystemInstruction`]s.
+///
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SystemInstructionOutcome {
+    /// Indicates stop was successful.
     Stop,
 }
 
@@ -307,6 +308,7 @@ pub enum Outcome {
     Node(NodeOutcome),
     /// Cheatcode-related outcome.
     Cheat(CheatcodesReturn),
+    /// System-related outcome.
     System(SystemInstructionOutcome),
 }
 
@@ -342,6 +344,7 @@ pub struct ReceiptData {
 /// Cheat instructions that can be sent to the [`Environment`] via the [`Socket`].
 #[derive(Debug, Clone)]
 pub enum CheatInstruction {
+    /// Declares a new contract.
     DeclareContract {
         /// The class hash of the contract to declare.
         // class_hash: Felt,
@@ -364,6 +367,7 @@ pub enum CheatInstruction {
         /// The L1 handler transaction.
         l1_handler_transaction: L1HandlerTransaction,
     },
+    /// Mints tokens in respective ERC20 contract for an account.
     TopUpBalance {
         /// The address to top up.
         receiver: Felt,
@@ -372,17 +376,17 @@ pub enum CheatInstruction {
         /// The token symbol or identifier.
         token: TokenId, // need to create classifier
     },
-
+    /// Starts impersonation. Skips transaction validation if sent on behalf of an account with impersonated address.
     Impersonate {
         /// The address to impersonate.
         address: Felt,
     },
-
+    /// Stops impersonation.
     StopImpersonating {
         /// The address to stop impersonating.
         address: Felt,
     },
-
+    /// Sets a value in the storage slot of a contract.
     SetStorageAt {
         /// The address of the contract.
         address: Felt,
@@ -391,12 +395,14 @@ pub enum CheatInstruction {
         /// The value to set in the storage slot.
         value: Felt,
     },
-
+    /// Sets the gas modification for the next block. (And created a block if needed)
     SetNextBlockGas {
+        /// The gas modification request.
         gas_modification: GasModificationRequest,
     },
-
+    /// Extracts the deployed contract address from a deployment transaction.
     GetDeployedContractAddress {
+        /// The transaction hash of the deployment.
         tx_hash: Felt,
     },
 }
@@ -404,6 +410,7 @@ pub enum CheatInstruction {
 /// Return values of applying cheatcodes.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CheatcodesReturn {
+    /// Returns the class hash of the declared contract.
     DeclareContract(Felt),
     /// Returns the contract address of the created account.
     CreateAccount(Felt),
@@ -413,10 +420,14 @@ pub enum CheatcodesReturn {
     L1Message(Felt),
     /// Indicates a balance was added.
     TopUpBalance,
+    /// Indicates the address was impersonated.
     Impersonate,
+    /// Indicates the impersonation was stopped.
     StopImpersonating,
+    /// Indicates the storage slot was set.
     SetStorageAt,
+    /// Indicates the next block gas was set returning the gas modification values.
     SetNextBlockGas(GasModification),
-
+    /// Returns the address of the deployed contract.
     GetDeployedContractAddress(Felt),
 }

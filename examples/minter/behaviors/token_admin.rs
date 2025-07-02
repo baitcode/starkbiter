@@ -1,7 +1,7 @@
 use std::{collections::HashMap, num::NonZero};
 
 use starkbiter_bindings::{
-    erc_20_mintable_oz0::Erc20MintableOZ0, ARGENT_v040_SIERRA, ERC20_CONTRACT_SIERRA,
+    erc_20_mintable_oz0::Erc20MintableOZ0, ARGENT_V040_SIERRA, ERC20_CONTRACT_SIERRA,
 };
 use starkbiter_core::middleware::{connection::Connection, traits::Middleware};
 use starknet_accounts::{Account, SingleOwnerAccount};
@@ -89,7 +89,7 @@ impl Behavior<Message> for TokenAdmin {
 
         client.set_next_block_gas(ALL_GAS_1).await?;
 
-        let argent_class_hash = client.declare_contract(ARGENT_v040_SIERRA).await?;
+        let argent_class_hash = client.declare_contract(ARGENT_V040_SIERRA).await?;
 
         let account = &client
             .create_single_owner_account(

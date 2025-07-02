@@ -243,13 +243,13 @@ pub enum NodeOutcome {
     /// The specification version of the node.
     SpecVersion(String),
     /// The block with transaction hashes, or a pending block.
-    GetBlockWithTxHashes(core_types::MaybePendingBlockWithTxHashes),
+    GetBlockWithTxHashes(Box<core_types::MaybePendingBlockWithTxHashes>),
     /// The block with full transactions, or a pending block.
-    GetBlockWithTxs(core_types::MaybePendingBlockWithTxs),
+    GetBlockWithTxs(Box<core_types::MaybePendingBlockWithTxs>),
     /// The block with receipts, or a pending block.
-    GetBlockWithReceipts(core_types::MaybePendingBlockWithReceipts),
+    GetBlockWithReceipts(Box<core_types::MaybePendingBlockWithReceipts>),
     /// The state update for a given block, or a pending state update.
-    GetStateUpdate(core_types::MaybePendingStateUpdate),
+    GetStateUpdate(Box<core_types::MaybePendingStateUpdate>),
     /// The value of a storage slot.
     GetStorageAt(core_types::Felt),
     /// The status of L1/L2 messages for a transaction.
@@ -257,17 +257,17 @@ pub enum NodeOutcome {
     /// The status of a transaction.
     GetTransactionStatus(core_types::TransactionStatus),
     /// The transaction details by hash.
-    GetTransactionByHash(core_types::Transaction),
+    GetTransactionByHash(Box<core_types::Transaction>),
     /// The transaction details by block id and index.
-    GetTransactionByBlockIdAndIndex(core_types::Transaction),
+    GetTransactionByBlockIdAndIndex(Box<core_types::Transaction>),
     /// The transaction receipt with block info.
-    GetTransactionReceipt(core_types::TransactionReceiptWithBlockInfo),
+    GetTransactionReceipt(Box<core_types::TransactionReceiptWithBlockInfo>),
     /// The contract class for a given class hash.
-    GetClass(core_types::ContractClass),
+    GetClass(Box<core_types::ContractClass>),
     /// The class hash at a contract address.
     GetClassHashAt(core_types::Felt),
     /// The contract class at a contract address.
-    GetClassAt(core_types::ContractClass),
+    GetClassAt(Box<core_types::ContractClass>),
     /// The number of transactions in a block.
     GetBlockTransactionCount(u64),
     /// The result of a contract call.
@@ -275,7 +275,7 @@ pub enum NodeOutcome {
     /// The estimated fee(s) for a transaction.
     EstimateFee(Vec<core_types::FeeEstimate>),
     /// The estimated fee for a message from L1.
-    EstimateMessageFee(core_types::FeeEstimate),
+    EstimateMessageFee(Box<core_types::FeeEstimate>),
     /// The current block number.
     BlockNumber(u64),
     /// The current block hash and number.
@@ -283,13 +283,13 @@ pub enum NodeOutcome {
     /// The chain ID.
     ChainId(core_types::Felt),
     /// The syncing status of the node.
-    Syncing(core_types::SyncStatusType),
+    Syncing(Box<core_types::SyncStatusType>),
     /// The page of events matching a filter.
     GetEvents(core_types::EventsPage),
     /// The nonce for a contract.
     GetNonce(core_types::Felt),
     /// The storage proof for a contract and key.
-    GetStorageProof(core_types::StorageProof),
+    GetStorageProof(Box<core_types::StorageProof>),
     /// The result of adding an invoke transaction.
     AddInvokeTransaction(core_types::InvokeTransactionResult),
     /// The result of adding a declare transaction.
@@ -297,7 +297,7 @@ pub enum NodeOutcome {
     /// The result of adding a deploy account transaction.
     AddDeployAccountTransaction(core_types::DeployAccountTransactionResult),
     /// The trace of a transaction.
-    TraceTransaction(core_types::TransactionTrace),
+    TraceTransaction(Box<core_types::TransactionTrace>),
     /// The result of simulating transactions.
     SimulateTransactions(Vec<core_types::SimulatedTransaction>),
     /// The traces of all transactions in a block.

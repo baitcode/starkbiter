@@ -70,7 +70,7 @@ impl Connection {
                 ProviderError::RateLimited
             })?;
 
-        return Ok(res);
+        Ok(res)
     }
 
     /// Subscribes to a stream of emitted event vectors. Vectors are produced
@@ -107,7 +107,7 @@ impl Connection {
             }
         });
 
-        return Box::pin(stream);
+        Box::pin(stream)
     }
 }
 
@@ -316,7 +316,7 @@ impl Provider for Connection {
         let res = self.send_instruction_recv_outcome(to_send).await?;
 
         if let Outcome::Node(NodeOutcome::GetBlockWithTxHashes(res)) = res {
-            Ok(res)
+            Ok(*res)
         } else {
             Err(ProviderError::RateLimited)
         }
@@ -336,7 +336,7 @@ impl Provider for Connection {
         let res = self.send_instruction_recv_outcome(to_send).await?;
 
         if let Outcome::Node(NodeOutcome::GetBlockWithTxs(res)) = res {
-            Ok(res)
+            Ok(*res)
         } else {
             Err(ProviderError::RateLimited)
         }
@@ -358,7 +358,7 @@ impl Provider for Connection {
         let res = self.send_instruction_recv_outcome(to_send).await?;
 
         if let Outcome::Node(NodeOutcome::GetBlockWithReceipts(res)) = res {
-            Ok(res)
+            Ok(*res)
         } else {
             Err(ProviderError::RateLimited)
         }
@@ -379,7 +379,7 @@ impl Provider for Connection {
         let res = self.send_instruction_recv_outcome(to_send).await?;
 
         if let Outcome::Node(NodeOutcome::GetStateUpdate(res)) = res {
-            Ok(res)
+            Ok(*res)
         } else {
             Err(ProviderError::RateLimited)
         }
@@ -467,7 +467,7 @@ impl Provider for Connection {
         let res = self.send_instruction_recv_outcome(to_send).await?;
 
         if let Outcome::Node(NodeOutcome::GetTransactionByHash(res)) = res {
-            Ok(res)
+            Ok(*res)
         } else {
             Err(ProviderError::RateLimited)
         }
@@ -483,14 +483,14 @@ impl Provider for Connection {
         B: AsRef<BlockId> + Send + Sync,
     {
         let to_send = Instruction::Node(NodeInstruction::GetTransactionByBlockIdAndIndex {
-            block_id: block_id.as_ref().clone(),
+            block_id: *block_id.as_ref(),
             index,
         });
 
         let res = self.send_instruction_recv_outcome(to_send).await?;
 
         if let Outcome::Node(NodeOutcome::GetTransactionByBlockIdAndIndex(res)) = res {
-            Ok(res)
+            Ok(*res)
         } else {
             Err(ProviderError::RateLimited)
         }
@@ -511,7 +511,7 @@ impl Provider for Connection {
         let res = self.send_instruction_recv_outcome(to_send).await?;
 
         if let Outcome::Node(NodeOutcome::GetTransactionReceipt(res)) = res {
-            Ok(res)
+            Ok(*res)
         } else {
             Err(ProviderError::RateLimited)
         }
@@ -536,7 +536,7 @@ impl Provider for Connection {
         let res = self.send_instruction_recv_outcome(to_send).await?;
 
         if let Outcome::Node(NodeOutcome::GetClass(res)) = res {
-            Ok(res)
+            Ok(*res)
         } else {
             Err(ProviderError::RateLimited)
         }
@@ -586,7 +586,7 @@ impl Provider for Connection {
         let res = self.send_instruction_recv_outcome(to_send).await?;
 
         if let Outcome::Node(NodeOutcome::GetClassAt(res)) = res {
-            Ok(res)
+            Ok(*res)
         } else {
             Err(ProviderError::RateLimited)
         }
@@ -653,7 +653,7 @@ impl Provider for Connection {
         let to_send = Instruction::Node(NodeInstruction::EstimateFee {
             request: req[0].clone(),
             simulate_flags: flags.to_vec(),
-            block_id: block_id.as_ref().clone(),
+            block_id: *block_id.as_ref(),
         });
 
         let res = self.send_instruction_recv_outcome(to_send).await?;
@@ -683,7 +683,7 @@ impl Provider for Connection {
         let res = self.send_instruction_recv_outcome(to_send).await?;
 
         if let Outcome::Node(NodeOutcome::EstimateMessageFee(res)) = res {
-            Ok(res)
+            Ok(*res)
         } else {
             Err(ProviderError::RateLimited)
         }
@@ -736,7 +736,7 @@ impl Provider for Connection {
         let res = self.send_instruction_recv_outcome(to_send).await?;
 
         if let Outcome::Node(NodeOutcome::Syncing(res)) = res {
-            Ok(res)
+            Ok(*res)
         } else {
             Err(ProviderError::RateLimited)
         }
@@ -887,7 +887,7 @@ impl Provider for Connection {
         let res = self.send_instruction_recv_outcome(to_send).await?;
 
         if let Outcome::Node(NodeOutcome::TraceTransaction(res)) = res {
-            Ok(res)
+            Ok(*res)
         } else {
             Err(ProviderError::RateLimited)
         }

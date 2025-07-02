@@ -66,28 +66,17 @@ pub enum StarkbiterCoreError {
     #[error(transparent)]
     DevnetError(#[from] Error),
 
-    // /// Provider error.
-    // #[error(transparent)]
-    // ProviderError(#[from] ProviderError),
-    /// Wallet error.
-    // #[error(transparent)]
-    // WalletError(#[from] WalletError),
-
     /// Send error.
     #[error(transparent)]
     SendError(
         #[from]
         #[allow(private_interfaces)]
-        SendError<Instruction>,
+        Box<SendError<Instruction>>,
     ),
 
     /// Recv error.
     #[error(transparent)]
     RecvError(#[from] RecvError),
-
-    /// Failed to parse integer from string.
-    // #[error(transparent)]
-    // FromStrRadixError(#[from] uint::FromStrRadixErr),
 
     /// Failed to handle json.
     #[error(transparent)]

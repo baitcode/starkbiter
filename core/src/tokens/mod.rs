@@ -18,9 +18,8 @@ use starknet_devnet_types::chain_id::ChainId;
 static MAINNET_JSON: &str = include_str!("./assets/mainnet.json");
 static SEPOLIA_JSON: &str = include_str!("./assets/sepolia.json");
 
-#[allow(missing_docs)]
-
 /// Represents the supported token identifiers.
+#[allow(missing_docs)]
 #[derive(Debug, Clone)]
 pub enum TokenId {
     STRK,
@@ -83,20 +82,20 @@ struct BridgedTokenDataStorage {
     _cache: HashMap<ChainId, BridgedTokenData>,
 }
 
-fn load_data(source: &String) -> BridgedTokenData {
+fn load_data(source: &str) -> BridgedTokenData {
     let deserialised: Vec<SerialisedTokenData> =
         serde_json::from_str(source).expect("Failed to parse token data");
 
-    return deserialised
+    deserialised
         .into_iter()
         .filter(|t| {
-            return t.id.is_some()
+            t.id.is_some()
                 && t.symbol.is_some()
                 && t.decimals.is_some()
                 && t.l1_token_address.is_some()
                 && t.l1_bridge_address.is_some()
                 && t.l2_bridge_address.is_some()
-                && t.l2_token_address.is_some();
+                && t.l2_token_address.is_some()
         })
         .map(|t| {
             (
@@ -113,7 +112,7 @@ fn load_data(source: &String) -> BridgedTokenData {
                 },
             )
         })
-        .collect::<HashMap<String, BridgedToken>>();
+        .collect::<HashMap<String, BridgedToken>>()
 }
 
 impl BridgedTokenDataStorage {
@@ -129,18 +128,18 @@ impl BridgedTokenDataStorage {
                 let data = self
                     ._cache
                     .entry(*chain_id)
-                    .or_insert_with(|| load_data(&MAINNET_JSON.to_string()));
+                    .or_insert_with(|| load_data(MAINNET_JSON));
 
                 let key = String::from(token_id);
-                return data.get(&key);
+                data.get(&key)
             }
             ChainId::Testnet => {
                 let data = self
                     ._cache
                     .entry(*chain_id)
-                    .or_insert_with(|| load_data(&SEPOLIA_JSON.to_string()));
+                    .or_insert_with(|| load_data(SEPOLIA_JSON));
 
-                return data.get(&String::from(token_id));
+                data.get(&String::from(token_id))
             }
             _ => unimplemented!("Only supports data for Mainnet and Testnet (sepolia)"),
         }
@@ -163,7 +162,7 @@ pub fn get_token_data(chain_id: &ChainId, token_id: &TokenId) -> Result<BridgedT
         .lock()
         .unwrap()
         .get(chain_id, token_id)
-        .map(|t| t.clone())
+        .cloned()
         .ok_or(anyhow!(
             "Token data not found for chain ID: {:?} and token ID: {:?}",
             chain_id,

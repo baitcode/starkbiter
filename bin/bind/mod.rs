@@ -17,7 +17,6 @@ use inflector::Inflector;
 /// * `Err(std::io::Error)` if the command execution fails or if there's an
 ///   error in generating the bindings. This can also include if the `forge`
 ///   tool is not installed.
-
 pub(crate) fn cainome_bind(src: &str, dest: &str, use_debug: &bool) -> std::io::Result<()> {
     let derives = if *use_debug {
         vec!["Debug", "PartialEq"]
@@ -78,7 +77,7 @@ pub(crate) fn cainome_bind(src: &str, dest: &str, use_debug: &bool) -> std::io::
             if !src_file_path.is_file() {
                 continue;
             }
-            if !src_file_path.extension().map_or(false, |ext| ext == "json") {
+            if src_file_path.extension().is_none_or(|ext| ext != "json") {
                 continue;
             }
 

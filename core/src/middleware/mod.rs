@@ -78,7 +78,7 @@ impl StarkbiterMiddleware {
     pub fn new(
         environment: &Environment,
         seed_and_label: Option<&str>,
-    ) -> Result<Arc<Self>, StarkbiterCoreError> {
+    ) -> Result<Arc<Self>, Box<StarkbiterCoreError>> {
         let connection = Connection::from(environment);
 
         info!(
@@ -116,8 +116,8 @@ impl StarkbiterMiddleware {
         T: for<'a> TryFrom<&'a EmittedEvent> + Send + Sync + 'static,
     {
         let vector_stream = self.connection.subscribe_to().await;
-        let item_stream = vector_stream.flat_map(|v| stream::iter(v));
-        return Box::pin(item_stream) as Pin<Box<dyn Stream<Item = T> + Send + Sync + 'static>>;
+        let item_stream = vector_stream.flat_map(stream::iter);
+        Box::pin(item_stream) as Pin<Box<dyn Stream<Item = T> + Send + Sync + 'static>>
     }
 }
 
@@ -128,7 +128,7 @@ impl Middleware for StarkbiterMiddleware {
     type Inner = Self;
 
     fn inner(&self) -> &Self::Inner {
-        &self
+        self
     }
 
     fn connection(&self) -> &Connection {
@@ -194,7 +194,7 @@ impl Middleware for StarkbiterMiddleware {
         let account = SingleOwnerAccount::new(
             self.connection().clone(), // TODO: not thread safe
             LocalWallet::from_signing_key(signing_key),
-            address.into(),
+            address,
             chain_id,
             ExecutionEncoding::New,
         );

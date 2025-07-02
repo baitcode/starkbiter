@@ -20,7 +20,7 @@ pub fn mint_tokens_in_erc20_contract(
     contract_address: Felt,
     recipient: Felt,
     amount: BigUint,
-) -> Result<(), StarkbiterCoreError> {
+) -> Result<(), Box<StarkbiterCoreError>> {
     let contract_address = ContractAddress::try_from(contract_address)
         .map_err(|e| StarkbiterCoreError::DevnetError(DevnetError::StarknetApiError(e)))?;
 
@@ -44,7 +44,7 @@ pub fn mint_tokens_in_erc20_contract(
             .get_storage_at(address, high_key)
             .map_err(|e| StarkbiterCoreError::DevnetError(DevnetError::BlockifierStateError(e)))?;
 
-        return Ok(join_felts(&high_val, &low_val));
+        Ok(join_felts(&high_val, &low_val))
     }
 
     fn write_biguint(
@@ -80,12 +80,12 @@ pub fn mint_tokens_in_erc20_contract(
     let recepient_balance_key = get_storage_var_address("ERC20_balances", &[recipient])
         .map_err(|e| StarkbiterCoreError::InternalError(e.to_string()))?;
 
-    let recepient_balance = read_biguint(&state, contract_address, recepient_balance_key)?;
+    let recepient_balance = read_biguint(state, contract_address, recepient_balance_key)?;
 
     let total_supply_key = get_storage_var_address("ERC20_total_supply", &[])
         .map_err(|e| StarkbiterCoreError::InternalError(e.to_string()))?;
 
-    let total_supply = read_biguint(&state, contract_address, total_supply_key)?;
+    let total_supply = read_biguint(state, contract_address, total_supply_key)?;
 
     write_biguint(
         state,

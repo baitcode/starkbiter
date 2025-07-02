@@ -1,4 +1,4 @@
-//! The agent module contains the core agent abstraction for the Arbiter Engine.
+//! The agent module contains the core agent abstraction for the Starkbiter Engine.
 
 use std::{fmt::Debug, sync::Arc};
 

@@ -21,7 +21,7 @@ The `Behavior<E>` has two methods: `startup` and `process`.
     It can also be streamed and used for processing messages in a `Behavior<Message>`.
     - `Agent` also owns a `Vec<Box<dyn StateMachine>>` which is a list of `StateMachine`s that the `Agent` will run.
     This is a way for `Agent`s to have multiple `Behavior`s that may not use the same event type.
-- `World` is a struct that has an ID, an Arbiter `Environment`, a mapping of `Agent`s, and a `Messager`.
+- `World` is a struct that has an ID, an Starkbiter `Environment`, a mapping of `Agent`s, and a `Messager`.
     - The `World` is tasked with letting `Agent`s join in, and when they do so, to connect them to the `Environment` with a client and `Messager` with the `Agent`'s ID.
 - `Universe` is a struct that wraps a mapping of `World`s.
     - The `Universe` is tasked with letting `World`s join in and running those `World`s in parallel.

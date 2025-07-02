@@ -1,4 +1,4 @@
-# Arbiter macros
+# Starkbiter macros
 `starkbiter_macros` provides a set of macros to help with the use of `starkbiter-engine` and `starkbiter-core`.
 Macros allow for code generation which enables developers to write code that writes code. 
 We use them here to reduce boilerplate by abstracting repetitive patterns. 
@@ -48,7 +48,7 @@ The macro needs to have have an object that has the `CreateStateMachine` trait i
 
 
 You can find an example that uses both of these macros in the [starkbiter-template repository](https://github.com/anthias-labs/starkbiter-template). 
-Similarly, in the Arbiter repo itself, this exact same collection of code is found in the `examples/template/` directory.
+Similarly, in the Starkbiter repo itself, this exact same collection of code is found in the `examples/template/` directory.
 
 If you wanted to use the `#[main]` macro alongside the `#[derive(Behaviors)]` macro, you would do so like this:
 ```rust, ignore

@@ -1,10 +1,10 @@
-//! Error types for the arbiter engine.
+//! Error types for the Starkbiter engine.
 
 use thiserror::Error;
 
 use super::*;
 
-/// Errors that can occur in the arbiter engine.
+/// Errors that can occur in the Starkbiter engine.
 #[derive(Debug, Error)]
 pub enum ArbiterEngineError {
     /// Error occurred with the [`Messager`].

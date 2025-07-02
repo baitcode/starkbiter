@@ -2,28 +2,23 @@
 
 use std::{
     collections::HashMap,
-    convert::TryFrom,
     sync::Arc,
     time::{Duration, Instant},
 };
 
-use arbiter_bindings::bindings::{
-    arbiter_math::ArbiterMath,
-    arbiter_token::{self, ArbiterToken},
+use cainome::cairo_serde::{ContractAddress, U256};
+use starkbiter_bindings::erc_20_mintable_oz0::Erc20MintableOZ0;
+use starkbiter_core::{
+    environment::Environment,
+    middleware::{traits::Middleware, StarkbiterMiddleware},
 };
-use arbiter_core::{environment::Environment, middleware::StarkbiterMiddleware};
-use ethers::{
-    core::{k256::ecdsa::SigningKey, utils::Anvil},
-    middleware::SignerMiddleware,
-    providers::{Http, Middleware, Provider},
-    signers::{LocalWallet, Signer, Wallet},
-    types::{Address, I256, U256},
-    utils::AnvilInstance,
+use starknet_accounts::{Account, ConnectedAccount};
+use starknet_core::{
+    types::{Call, Felt},
+    utils::get_selector_from_name,
 };
-use polars::{
-    prelude::{DataFrame, NamedFrom},
-    series::Series,
-};
+use starknet_devnet_core::constants::{self, ARGENT_CONTRACT_CLASS_HASH};
+use starknet_signers::SigningKey;
 use tracing::info;
 
 const NUM_BENCH_ITERATIONS: usize = 100;
@@ -40,7 +35,7 @@ struct BenchDurations {
 #[tokio::main]
 async fn main() {
     // Choose the benchmark group items by label.
-    let group = ["anvil", "arbiter"];
+    let group = ["arbiter"];
     let mut results: HashMap<&str, HashMap<&str, Duration>> = HashMap::new();
 
     // Set up for showing percentage done.
@@ -54,14 +49,8 @@ async fn main() {
 
         for index in 0..NUM_BENCH_ITERATIONS {
             durations.push(match item {
-                label @ "anvil" => {
-                    let (client, _anvil_instance) = anvil_startup().await;
-                    let duration = bencher(client, label).await;
-                    drop(_anvil_instance);
-                    duration
-                }
-                label @ "arbiter" => {
-                    let (_environment, client) = arbiter_startup();
+                label @ "starkbiter" => {
+                    let (_environment, client) = starkbiter_startup();
                     bencher(client, label).await
                 }
                 _ => panic!("Invalid argument"),
@@ -100,22 +89,27 @@ async fn main() {
         results.insert(item, item_results);
     }
 
-    let df = create_dataframe(&results, &group);
+    // let df = create_dataframe(&results, &group);
 
     match get_version_of("starkbiter-core") {
         Some(version) => println!("starkbiter-core version: {}", version),
         None => println!("Could not find version for starkbiter-core"),
     }
 
-    match get_version_of("ethers") {
-        Some(version) => println!("ethers-core anvil version: {}", version),
-        None => println!("Could not find version for anvil"),
-    }
     println!("Date: {}", chrono::Local::now().format("%Y-%m-%d"));
-    println!("{}", df);
+    // println!("{}", df);
 }
 
-async fn bencher<M: Middleware + 'static>(client: Arc<M>, label: &str) -> BenchDurations {
+async fn bencher(client: Arc<StarkbiterMiddleware>, label: &str) -> BenchDurations {
+    let account = client
+        .create_single_owner_account(
+            Option::<SigningKey>::None,
+            ARGENT_CONTRACT_CLASS_HASH,
+            10000000,
+        )
+        .await
+        .unwrap();
+
     // Track the duration for each part of the benchmark.
     let mut total_deploy_duration = 0;
     let mut total_lookup_duration = 0;
@@ -124,23 +118,22 @@ async fn bencher<M: Middleware + 'static>(client: Arc<M>, label: &str) -> BenchD
 
     // Deploy `ArbiterMath` and `ArbiterToken` contracts and tally up how long this
     // takes.
-    let (arbiter_math, arbiter_token, deploy_duration) = deployments(client.clone(), label).await;
+    let (arbiter_token, deploy_duration) = deployments(client.clone(), &account, label).await;
     total_deploy_duration += deploy_duration.as_micros();
 
     // Call `balance_of` `NUM_LOOP_STEPS` times on `ArbiterToken` and tally up how
     // long basic lookups take.
-    let lookup_duration = lookup(arbiter_token.clone(), label).await;
+    let lookup_duration = lookup(&account, &arbiter_token, label).await;
     total_lookup_duration += lookup_duration.as_micros();
 
     // Call `cdf` `NUM_LOOP_STEPS` times on `ArbiterMath` and tally up how long this
     // takes.
-    let stateless_call_duration = stateless_call_loop(arbiter_math, label).await;
-    total_stateless_call_duration += stateless_call_duration.as_micros();
+    // let stateless_call_duration = stateless_call_loop(arbiter_math, label).await;
+    // total_stateless_call_duration += stateless_call_duration.as_micros();
 
     // Call `mint` `NUM_LOOP_STEPS` times on `ArbiterToken` and tally up how long
     // this takes.
-    let statefull_call_duration =
-        stateful_call_loop(arbiter_token, client.default_sender().unwrap(), label).await;
+    let statefull_call_duration = stateful_call_loop(&account, &arbiter_token, label).await;
     total_stateful_call_duration += statefull_call_duration.as_micros();
 
     BenchDurations {
@@ -151,99 +144,96 @@ async fn bencher<M: Middleware + 'static>(client: Arc<M>, label: &str) -> BenchD
     }
 }
 
-async fn anvil_startup() -> (
-    Arc<SignerMiddleware<Provider<Http>, Wallet<SigningKey>>>,
-    AnvilInstance,
-) {
-    // Create an Anvil instance
-    // No blocktime mines a new block for each tx, which is fastest.
-    let anvil = Anvil::new().spawn();
-
-    // Create a client
-    let provider = Provider::<Http>::try_from(anvil.endpoint())
-        .unwrap()
-        .interval(Duration::ZERO);
-
-    let wallet: LocalWallet = anvil.keys()[0].clone().into();
-    let client = Arc::new(SignerMiddleware::new(
-        provider,
-        wallet.with_chain_id(anvil.chain_id()),
-    ));
-
-    (client, anvil)
-}
-
-fn arbiter_startup() -> (Environment, Arc<StarkbiterMiddleware>) {
+fn starkbiter_startup() -> (Environment, Arc<StarkbiterMiddleware>) {
     let environment = Environment::builder().build();
 
     let client = StarkbiterMiddleware::new(&environment, Some("name")).unwrap();
     (environment, client)
 }
 
-async fn deployments<M: Middleware + 'static>(
-    client: Arc<M>,
+async fn deployments<A: ConnectedAccount + Sync + Clone>(
+    client: Arc<StarkbiterMiddleware>,
+    account: &A,
     label: &str,
-) -> (ArbiterMath<M>, ArbiterToken<M>, Duration) {
+) -> (Erc20MintableOZ0<A>, Duration) {
     let start = Instant::now();
-    let arbiter_math = ArbiterMath::deploy(client.clone(), ())
-        .unwrap()
-        .send()
+
+    let deploy_call = vec![Call {
+        to: constants::UDC_CONTRACT_ADDRESS,
+        selector: get_selector_from_name("deployContract").unwrap(),
+        calldata: vec![
+            constants::CAIRO_1_ERC20_CONTRACT_CLASS_HASH, // class hash
+            Felt::from_hex_unchecked("0x123"),            // salt
+            Felt::ZERO,                                   // unique
+            Felt::ONE,                                    // constructor length
+            account.address(),                            // constructor arguments
+        ],
+    }];
+
+    let result = account.execute_v3(deploy_call).send().await.unwrap();
+
+    let address = client
+        .get_deployed_contract_address(result.transaction_hash)
         .await
         .unwrap();
-    let arbiter_token = arbiter_token::ArbiterToken::deploy(
-        client.clone(),
-        ("Bench Token".to_string(), "BNCH".to_string(), 18_u8),
-    )
-    .unwrap()
-    .send()
-    .await
-    .unwrap();
+
+    let token = Erc20MintableOZ0::new(address, account.clone());
+
     let duration = start.elapsed();
     info!("Time elapsed in {} deployment is: {:?}", label, duration);
 
-    (arbiter_math, arbiter_token, duration)
+    (token, duration)
 }
 
-async fn lookup<M: Middleware + 'static>(arbiter_token: ArbiterToken<M>, label: &str) -> Duration {
-    let address = arbiter_token.client().default_sender().unwrap();
-    let start = Instant::now();
-    for _ in 0..NUM_LOOP_STEPS {
-        arbiter_token.balance_of(address).call().await.unwrap();
-    }
-    let duration = start.elapsed();
-    info!("Time elapsed in {} cdf loop is: {:?}", label, duration);
-
-    duration
-}
-
-async fn stateless_call_loop<M: Middleware + 'static>(
-    arbiter_math: ArbiterMath<M>,
+async fn lookup<A: ConnectedAccount + Sync + Clone>(
+    account: &A,
+    arbiter_token: &Erc20MintableOZ0<A>,
     label: &str,
 ) -> Duration {
-    let iwad = I256::from(10_u128.pow(18));
-    let start = Instant::now();
-    for _ in 0..NUM_LOOP_STEPS {
-        arbiter_math.cdf(iwad).call().await.unwrap();
-    }
-    let duration = start.elapsed();
-    info!("Time elapsed in {} cdf loop is: {:?}", label, duration);
-
-    duration
-}
-
-async fn stateful_call_loop<M: Middleware + 'static>(
-    arbiter_token: arbiter_token::ArbiterToken<M>,
-    mint_address: Address,
-    label: &str,
-) -> Duration {
-    let wad = U256::from(10_u128.pow(18));
     let start = Instant::now();
     for _ in 0..NUM_LOOP_STEPS {
         arbiter_token
-            .mint(mint_address, wad)
-            .send()
+            .balanceOf(&ContractAddress::from(account.address()))
+            .call()
             .await
-            .unwrap()
+            .unwrap();
+    }
+    let duration = start.elapsed();
+    info!("Time elapsed in {} cdf loop is: {:?}", label, duration);
+
+    duration
+}
+
+// async fn stateless_call_loop<A: ConnectedAccount + Sync + Clone>(
+//     account: &A,
+//     arbiter_token: Erc20MintableOZ0<A>,
+//     label: &str,
+// ) -> Duration {
+//     let iwad = I256::from(10_u128.pow(18));
+//     let start = Instant::now();
+//     for _ in 0..NUM_LOOP_STEPS {
+//         arbiter_math.cdf(iwad).call().await.unwrap();
+//     }
+//     let duration = start.elapsed();
+//     info!("Time elapsed in {} cdf loop is: {:?}", label, duration);
+
+//     duration
+// }
+
+async fn stateful_call_loop<A: ConnectedAccount + Sync + Clone>(
+    account: &A,
+    arbiter_token: &Erc20MintableOZ0<A>,
+    label: &str,
+) -> Duration {
+    let wad = U256 {
+        low: 10_u128.pow(18),
+        high: 0,
+    };
+    let start = Instant::now();
+    for _ in 0..NUM_LOOP_STEPS {
+        arbiter_token
+            .mint(&ContractAddress::from(account.address()), &wad)
+            .send()
             .await
             .unwrap();
     }
@@ -253,35 +243,35 @@ async fn stateful_call_loop<M: Middleware + 'static>(
     duration
 }
 
-fn create_dataframe(results: &HashMap<&str, HashMap<&str, Duration>>, group: &[&str]) -> DataFrame {
-    let operations = ["Deploy", "Lookup", "Stateless Call", "Stateful Call"];
-    let mut df = DataFrame::new(vec![
-        Series::new("Operation", operations.to_vec()),
-        Series::new(
-            &format!("{} (μs)", group[0]),
-            operations
-                .iter()
-                .map(|&op| results.get(group[0]).unwrap().get(op).unwrap().as_micros() as f64)
-                .collect::<Vec<_>>(),
-        ),
-        Series::new(
-            &format!("{} (μs)", group[1]),
-            operations
-                .iter()
-                .map(|&op| results.get(group[1]).unwrap().get(op).unwrap().as_micros() as f64)
-                .collect::<Vec<_>>(),
-        ),
-    ])
-    .unwrap();
+// fn create_dataframe(results: &HashMap<&str, HashMap<&str, Duration>>, group: &[&str]) -> DataFrame {
+//     let operations = ["Deploy", "Lookup", "Stateless Call", "Stateful Call"];
+//     let mut df = DataFrame::new(vec![
+//         Series::new("Operation", operations.to_vec()),
+//         Series::new(
+//             &format!("{} (μs)", group[0]),
+//             operations
+//                 .iter()
+//                 .map(|&op| results.get(group[0]).unwrap().get(op).unwrap().as_micros() as f64)
+//                 .collect::<Vec<_>>(),
+//         ),
+//         Series::new(
+//             &format!("{} (μs)", group[1]),
+//             operations
+//                 .iter()
+//                 .map(|&op| results.get(group[1]).unwrap().get(op).unwrap().as_micros() as f64)
+//                 .collect::<Vec<_>>(),
+//         ),
+//     ])
+//     .unwrap();
 
-    let s0 = df.column(&format!("{} (μs)", group[0])).unwrap().to_owned();
-    let s1 = df.column(&format!("{} (μs)", group[1])).unwrap().to_owned();
-    let mut relative_difference = s0.divide(&s1).unwrap();
+//     let s0 = df.column(&format!("{} (μs)", group[0])).unwrap().to_owned();
+//     let s1 = df.column(&format!("{} (μs)", group[1])).unwrap().to_owned();
+//     let mut relative_difference = s0.divide(&s1).unwrap();
 
-    df.with_column::<Series>(relative_difference.rename("Relative Speedup").clone())
-        .unwrap()
-        .clone()
-}
+//     df.with_column::<Series>(relative_difference.rename("Relative Speedup").clone())
+//         .unwrap()
+//         .clone()
+// }
 
 fn get_version_of(crate_name: &str) -> Option<String> {
     let metadata = cargo_metadata::MetadataCommand::new().exec().unwrap();

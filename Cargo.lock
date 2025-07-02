@@ -6359,6 +6359,7 @@ dependencies = [
  "starknet-core",
  "starknet-devnet-core",
  "starknet-devnet-types",
+ "starknet-signers",
  "starknet_api",
  "thiserror 1.0.69",
  "tokio",

@@ -1,7 +1,4 @@
-use starkbiter_bindings::{
-    contracts_counter::ContractsCounter, erc_20_mintable_oz0::Erc20MintableOZ0, ARGENT_V040_SIERRA,
-    ERC20_CONTRACT_SIERRA,
-};
+use starkbiter_bindings::{contracts_counter::ContractsCounter, ARGENT_V040_SIERRA};
 use starkbiter_core::{
     environment::Environment,
     middleware::{traits::Middleware, StarkbiterMiddleware},
@@ -11,7 +8,7 @@ use starknet_accounts::Account;
 use starknet_devnet_core::constants;
 use std::{num::NonZero, str::FromStr};
 
-use cainome::cairo_serde::{ContractAddress, U256};
+use cainome::cairo_serde::ContractAddress;
 
 use starknet_core::{
     types::{Call, Felt},
@@ -35,7 +32,7 @@ const ALL_GAS_1: GasModificationRequest = GasModificationRequest {
 
 pub fn setup_log() {
     std::env::set_var("RUST_LOG", "trace");
-    tracing_subscriber::fmt::try_init();
+    let _ = tracing_subscriber::fmt::try_init();
 }
 
 #[tokio::test]
@@ -106,5 +103,5 @@ async fn test_create_account_and_use_it_to_deploy_udc_counter_contract() {
 
     assert!(result == 1, "Counter should be one");
 
-    env.stop();
+    let _ = env.stop();
 }

@@ -4,7 +4,7 @@ use starkbiter_core::{
     environment::Environment,
     middleware::{traits::Middleware, StarkbiterMiddleware},
 };
-use starknet::contract;
+
 use starknet_core::types::{BlockId, BlockTag, ContractClass, Felt, MaybePendingBlockWithTxs};
 use starknet_devnet_types::{chain_id::ChainId, rpc::gas_modification::GasModificationRequest};
 use url::Url;
@@ -33,7 +33,7 @@ async fn test_set_chain_id() {
         "Chain ID does not match expected value"
     );
 
-    env.stop();
+    let _ = env.stop();
 }
 
 #[tokio::test]
@@ -60,7 +60,7 @@ async fn test_create_block() {
         new_block_number
     );
 
-    env.stop();
+    let _ = env.stop();
 }
 
 const ALL_GAS_1: GasModificationRequest = GasModificationRequest {
@@ -117,7 +117,7 @@ async fn test_set_next_block_gas() {
         assert!(false, "Block should've been finalised")
     }
 
-    env.stop();
+    let _ = env.stop();
 }
 
 #[tokio::test]
@@ -178,7 +178,7 @@ async fn test_set_get_storage_at() {
         );
     };
 
-    env.stop();
+    let _ = env.stop();
 }
 
 #[tokio::test]
@@ -215,14 +215,12 @@ async fn test_class_hash_at() {
             )
     );
 
-    env.stop();
+    let _ = env.stop();
 }
 
-// #[tokio::test()]
+/// Skipped as devnet does not support class at for forked classes defined outside of current instance.
+#[allow(unused)]
 async fn test_class_at() {
-    std::env::set_var("RUST_LOG", "trace");
-    tracing_subscriber::fmt::try_init();
-
     // Custom chain ID for Starknet
     let chain_id = ChainId::Mainnet;
 
@@ -250,7 +248,7 @@ async fn test_class_at() {
         .await
         .expect("Should not throw error");
 
-    if let ContractClass::Sierra(class) = contract_class {
+    if let ContractClass::Sierra(_class) = contract_class {
         // compare with ekubo contract class implementation
     } else {
         assert!(
@@ -260,7 +258,7 @@ async fn test_class_at() {
         );
     }
     // contract_class.
-    env.stop();
+    let _ = env.stop();
 }
 
 // Custom chain ID for Starknet

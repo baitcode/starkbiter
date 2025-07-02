@@ -184,7 +184,7 @@ impl Behavior<Message> for TokenAdmin {
                     high: 0,
                 };
 
-                let result = token
+                let _result = token
                     .mint(
                         &cainome::cairo_serde::ContractAddress::from(mint_request.mint_to),
                         &amount,

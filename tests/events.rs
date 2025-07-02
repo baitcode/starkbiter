@@ -23,7 +23,7 @@ use starknet_devnet_types::{chain_id::ChainId, rpc::gas_modification::GasModific
 
 pub fn setup_log() {
     std::env::set_var("RUST_LOG", "trace");
-    tracing_subscriber::fmt::try_init();
+    let _ = tracing_subscriber::fmt::try_init();
 }
 
 const SOME_ADDRESS: &str = "0x00000005dd3D2F4429AF886cD1a3b08289DBcEa99A294197E9eB43b0e0325b4b";
@@ -133,7 +133,7 @@ async fn test_create_account_and_use_it_to_deploy_udc_erc20_contract() {
         assert!(false, "Expected a transfer event");
     }
 
-    env.stop();
+    let _ = env.stop();
 }
 
 // TODO: needs more cases

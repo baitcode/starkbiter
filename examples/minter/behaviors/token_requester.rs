@@ -1,12 +1,9 @@
 use std::num::NonZero;
 
-use starkbiter_bindings::{
-    erc_20_mintable_oz0::{ERC20ComponentEvent, Erc20MintableOZ0},
-    ARGENT_V040_SIERRA,
-};
+use starkbiter_bindings::{erc_20_mintable_oz0::ERC20ComponentEvent, ARGENT_V040_SIERRA};
 use starkbiter_core::middleware::traits::Middleware;
 
-use starknet_accounts::{Account, SingleOwnerAccount};
+use starknet_accounts::Account;
 
 use starknet_core::types::Felt;
 use starknet_devnet_types::rpc::gas_modification::GasModificationRequest;
@@ -41,13 +38,6 @@ pub(crate) struct TokenRequester {
 pub fn default_max_count() -> Option<u64> {
     Some(3)
 }
-
-type ERC20Contract = Erc20MintableOZ0<
-    SingleOwnerAccount<
-        starkbiter_core::middleware::connection::Connection,
-        starknet_signers::LocalWallet,
-    >,
->;
 
 const ALL_GAS_1: GasModificationRequest = GasModificationRequest {
     gas_price_wei: NonZero::new(1_u128),

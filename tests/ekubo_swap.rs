@@ -4,7 +4,7 @@ use starkbiter_bindings::{
     contracts_swapper::{self, SwapData, I129},
     ekubo_core,
     erc_20_mintable_oz0::Erc20MintableOZ0,
-    EKUBO_CORE_CONTRACT_SIERRA, EKUBO_ROUTER_LITE_CONTRACT_SIERRA, SWAPPER_CONTRACT_SIERRA,
+    EKUBO_ROUTER_LITE_CONTRACT_SIERRA, SWAPPER_CONTRACT_SIERRA,
 };
 use starkbiter_core::{
     environment::Environment,
@@ -42,7 +42,7 @@ const MAINNET_EKUBO_CORE_CONTRACT_ADDRESS: &str =
 
 pub fn setup_log() {
     std::env::set_var("RUST_LOG", "trace");
-    tracing_subscriber::fmt::try_init();
+    let _ = tracing_subscriber::fmt::try_init();
 }
 
 async fn deploy_swapper(
@@ -298,7 +298,7 @@ async fn test_ekubo_swap_1eth_for_usdc_with_swapper() {
 
     // let swapper = contracts_swapper::ContractsSwapper::new(swapper_address, &account);
 
-    env.stop();
+    let _ = env.stop();
 }
 
 fn to_u256(value: u128) -> U256 {
@@ -495,5 +495,5 @@ async fn test_ekubo_swap_1eth_for_usdc_with_router() {
         "EKUBO ETH balance should be one increase by 0.1 eth after swap"
     );
 
-    env.stop();
+    let _ = env.stop();
 }

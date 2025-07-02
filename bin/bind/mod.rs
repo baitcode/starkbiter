@@ -93,6 +93,15 @@ pub(crate) fn cainome_bind(src: &str, dest: &str, use_debug: &bool) -> std::io::
             let contract_file_name = format!("{}.rs", contract_name.to_snake_case());
             // What if empty?
 
+            let dest_file = out_path.join(contract_file_name);
+
+            if fs::exists(&dest_file)? {
+                println!(
+                    "File at {} already exists, skipping generation.",
+                    dest_file.display()
+                );
+                continue;
+            }
             println!("Generating bindings for contract: {}", contract_name);
 
             // let mut aliases = HashMap::new();
@@ -108,7 +117,7 @@ pub(crate) fn cainome_bind(src: &str, dest: &str, use_debug: &bool) -> std::io::
             abigen
                 .generate()
                 .expect("Fail to generate bindings")
-                .write_to_file(out_path.join(contract_file_name).to_str().unwrap())
+                .write_to_file(dest_file.to_str().unwrap())
                 .unwrap();
         }
     }

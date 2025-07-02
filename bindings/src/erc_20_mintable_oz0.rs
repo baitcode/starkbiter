@@ -5,7 +5,7 @@
 #![allow(clippy::all)]
 #![allow(warnings)]
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Erc20MintableOZ0<A: starknet::accounts::ConnectedAccount + Sync> {
@@ -61,7 +61,7 @@ impl<P: starknet::providers::Provider + Sync> Erc20MintableOZ0Reader<P> {
         Self { block_id, ..self }
     }
 }
-#[derive(PartialEq, Serialize, Deserialize, Debug)]
+#[derive(PartialEq, Debug, Serialize, Deserialize)]
 pub struct Approval {
     pub owner: cainome::cairo_serde::ContractAddress,
     pub spender: cainome::cairo_serde::ContractAddress,
@@ -166,7 +166,7 @@ impl OwnershipTransferred {
         "OwnershipTransferred"
     }
 }
-#[derive(PartialEq, Serialize, Deserialize, Debug)]
+#[derive(PartialEq, Debug, Serialize, Deserialize)]
 pub struct Transfer {
     pub from: cainome::cairo_serde::ContractAddress,
     pub to: cainome::cairo_serde::ContractAddress,
@@ -216,12 +216,11 @@ impl Transfer {
         "Transfer"
     }
 }
-#[derive(PartialEq, Serialize, Deserialize, Debug)]
+#[derive(PartialEq, Debug, Serialize, Deserialize)]
 pub enum ERC20ComponentEvent {
     Transfer(Transfer),
     Approval(Approval),
 }
-
 impl cainome::cairo_serde::CairoSerde for ERC20ComponentEvent {
     type RustType = Self;
     const SERIALIZED_SIZE: std::option::Option<usize> = std::option::Option::None;

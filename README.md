@@ -1,11 +1,11 @@
 ```bash
-#  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
-#  ░░░     ░░░       ░░░     ░░░      ░░░░  ░░░  ░░      ░░░       ░░       ░░      ░░      ░░░░
-#  ▒▒  ▒▒▒▒▒▒▒▒▒  ▒▒▒▒▒  ▒▒▒  ▒▒  ▒▒▒  ▒▒▒  ▒▒  ▒▒▒  ▒▒▒  ▒▒▒▒▒  ▒▒▒▒▒▒  ▒▒▒▒▒  ▒▒▒▒▒▒  ▒▒▒  ▒▒▒
-#  ▓▓▓     ▓▓▓▓▓  ▓▓▓▓▓  ▓▓▓  ▓▓     ▓▓▓▓▓    ▓▓▓▓▓      ▓▓▓▓▓▓  ▓▓▓▓▓▓  ▓▓▓▓▓    ▓▓▓▓      ▓▓▓▓
-#  ███████  ████  █████       ██  ███  ███  ██  ███  ███  █████  ██████  █████  ██████  ███  ███
-#  ███     █████  █████  ███  ██  ████  ██  ███  ██      ███       ████  █████      ██  ████  ██
-#  █████████████████████████████████████████████████████████████████████████████████████████████
+#  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+#  ░░     ░░░       ░░░     ░░░      ░░░░  ░░░  ░░      ░░░       ░░       ░░      ░░      ░░░
+#  ▒  ▒▒▒▒▒▒▒▒▒  ▒▒▒▒▒  ▒▒▒  ▒▒  ▒▒▒  ▒▒▒  ▒▒  ▒▒▒  ▒▒▒  ▒▒▒▒▒  ▒▒▒▒▒▒  ▒▒▒▒▒  ▒▒▒▒▒▒  ▒▒▒  ▒▒
+#  ▓▓     ▓▓▓▓▓  ▓▓▓▓▓  ▓▓▓  ▓▓     ▓▓▓▓▓    ▓▓▓▓▓      ▓▓▓▓▓▓  ▓▓▓▓▓▓  ▓▓▓▓▓    ▓▓▓▓      ▓▓▓
+#  ██████  ████  █████       ██  ███  ███  ██  ███  ███  █████  ██████  █████  ██████  ███  ██
+#  ██     █████  █████  ███  ██  ████  ██  ███  ██      ███       ████  █████      ██  ████  █
+#  ███████████████████████████████████████████████████████████████████████████████████████████
 ```
 > Expanding the Starknet tooling ecosystem.
 
@@ -21,7 +21,7 @@ The primary use of Starkbiter is to probe the mechanism security of smart contra
 
 ---
 
-The Arbiter workspace has five crates:
+The Starkbiter workspace has five crates:
 - `starkbiter`: The bin that exposes a command line interface for contract bindings.
 - `starkbiter-core`: A lib containing the core logic for the Starkbiter framework, including the `StarkbiterMiddleware` discussed before, and the `Environment`, our sandbox.
 - `starkbiter-engine`: A lib that provides abstractions for building simulations, agents, and behaviors.

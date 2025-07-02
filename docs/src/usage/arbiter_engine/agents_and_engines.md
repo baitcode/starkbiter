@@ -11,7 +11,7 @@ The latter will also require a `stream::select` type of operation to merge all t
 
 ## `struct Agent`
 The `Agent` struct is the primary struct that you will be working with.
-It contains an ID, a client (`Arc<RevmMiddleware>`) that provides means to send calls and transactions to an Arbiter `Environment`, and a `Messager`.
+It contains an ID, a client (`Arc<RevmMiddleware>`) that provides means to send calls and transactions to an Starkbiter `Environment`, and a `Messager`.
 It looks like this:
 ```rust, ignore
 pub struct Agent {

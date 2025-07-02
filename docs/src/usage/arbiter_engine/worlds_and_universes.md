@@ -1,9 +1,9 @@
 # Worlds and Universes
-`Universes` are the top-level struct that you will be working with in the Arbiter Engine.
+`Universes` are the top-level struct that you will be working with in the Starkbiter Engine.
 They are tasked with letting `World`s join in and running those `World`s in parallel.
 By no means are you required to use `Universe`s, but they will be useful for running multiple simulations at once or, in the future, they will allow for running `World`s that have different internal environments.
-For instance, one could have a `World` that consists of `Agent`s acting on the Ethereum mainnet, another `World` that consists of `Agent`s acting on Optimism, and finally a `World` that has an Arbiter `Environment` as the network analogue.
-Using these in tandem is a long-term goal of the Arbiter project.
+For instance, one could have a `World` that consists of `Agent`s acting on the Ethereum mainnet, another `World` that consists of `Agent`s acting on Optimism, and finally a `World` that has an Starkbiter `Environment` as the network analogue.
+Using these in tandem is a long-term goal of the Starkbiter project.
 
 Depending on your needs, you will either use the `Universe` if you want to run multiple `World`s in parallel or you will use the `World` if you only want to run a single simulation.
 The choice is yours.
@@ -32,13 +32,13 @@ pub struct World {
     pub messager: Messager,
 }
 ```
-The `World` is a struct that has an ID, an Arbiter `Environment`, a mapping of `Agent`s, and a `Messager`.
+The `World` is a struct that has an ID, an Starkbiter `Environment`, a mapping of `Agent`s, and a `Messager`.
 The `World` is tasked with letting `Agent`s join in, and when they do so, to connect them to the `Environment` with a client and `Messager` with the `Agent`'s ID.
 Then the `World` stores the `Agent`s in a map where the key is the `Agent`'s ID.
 
 The main methods to use with the world is `World::add_agent` which adds an agent to the `World` and `World::run` which will engage all of the `Agent` `Behavior`s.
 
-In future development, the `World` will be generic over your choice of `Provider` that encapsulates the Ethereum-like execution environment you want to use (e.g., Ethereum mainnet, Optimism, or an Arbiter `Environment`).
+In future development, the `World` will be generic over your choice of `Provider` that encapsulates the Ethereum-like execution environment you want to use (e.g., Ethereum mainnet, Optimism, or an Starkbiter `Environment`).
 
 ## Example
 Let's first do a quick example where we take a `World` and add an `Agent` to it.

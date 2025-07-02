@@ -1,3 +1,6 @@
+use std::{num::NonZero, str::FromStr};
+
+use cainome::cairo_serde::U256;
 use starkbiter_bindings::{
     erc_20_mintable_oz0::Erc20MintableOZ0, ARGENT_V040_SIERRA, ERC20_CONTRACT_SIERRA,
 };
@@ -7,16 +10,11 @@ use starkbiter_core::{
 };
 use starknet::signers::SigningKey;
 use starknet_accounts::Account;
-use starknet_devnet_core::constants;
-use std::{num::NonZero, str::FromStr};
-
-use cainome::cairo_serde::U256;
-
 use starknet_core::{
     types::{Call, Felt},
     utils::get_selector_from_name,
 };
-
+use starknet_devnet_core::constants;
 use starknet_devnet_types::{chain_id::ChainId, rpc::gas_modification::GasModificationRequest};
 
 pub fn setup_log() {

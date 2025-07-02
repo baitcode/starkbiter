@@ -1,3 +1,6 @@
+use std::{num::NonZero, str::FromStr};
+
+use cainome::cairo_serde::{ContractAddress, U256};
 use futures::StreamExt;
 use starkbiter_bindings::{
     erc_20_mintable_oz0::{ERC20ComponentEvent, Erc20MintableOZ0},
@@ -9,16 +12,11 @@ use starkbiter_core::{
 };
 use starknet::signers::SigningKey;
 use starknet_accounts::Account;
-use starknet_devnet_core::constants;
-use std::{num::NonZero, str::FromStr};
-
-use cainome::cairo_serde::{ContractAddress, U256};
-
 use starknet_core::{
     types::{Call, Felt},
     utils::get_selector_from_name,
 };
-
+use starknet_devnet_core::constants;
 use starknet_devnet_types::{chain_id::ChainId, rpc::gas_modification::GasModificationRequest};
 
 pub fn setup_log() {

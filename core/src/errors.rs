@@ -1,12 +1,11 @@
-//! Errors that can occur when managing or interfacing with Starkbiter's sandboxed
-//! Starknet Devnet environment.
+//! Errors that can occur when managing or interfacing with Starkbiter's
+//! sandboxed Starknet Devnet environment.
 
 use std::sync::{PoisonError, RwLockWriteGuard};
 
 use crossbeam_channel::{RecvError, SendError};
-use thiserror::Error;
-
 use starknet_devnet_core::error::Error;
+use thiserror::Error;
 
 use self::environment::instruction::{Instruction, Outcome};
 use super::*;

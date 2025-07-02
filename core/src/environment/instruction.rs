@@ -3,7 +3,6 @@
 //! [`middleware::StarkbiterMiddleware`] and the [`Environment`].
 
 use starknet::{core::types::Felt, signers::SigningKey};
-
 use starknet_core::types as core_types;
 use starknet_devnet_types::{
     felt::TransactionHash,
@@ -15,9 +14,8 @@ use starknet_devnet_types::{
     starknet_api::block::BlockNumber,
 };
 
-use crate::tokens::TokenId;
-
 use super::*;
+use crate::tokens::TokenId;
 
 /// Instructions that can be sent to the [`Environment`] via the [`Socket`].
 ///
@@ -25,23 +23,28 @@ use super::*;
 /// [`Socket::instruction_sender`] and the results are received via the
 /// [`crate::middleware::Connection::outcome_receiver`].
 ///
-/// TODO: This is actually a ProviderRequestData from starknet-rs, but they lack `Deserialize` and `PartialEq`.
+/// TODO: This is actually a ProviderRequestData from starknet-rs, but they lack
+/// `Deserialize` and `PartialEq`.
 #[derive(Debug, Clone)]
 pub enum NodeInstruction {
-    /// Gets the specification version of the node. Returns a constant "unknown".
+    /// Gets the specification version of the node. Returns a constant
+    /// "unknown".
     GetSpecVersion,
 
-    /// Gets the block with transaction hashes for the given block id. Mirrors node RPC API.
+    /// Gets the block with transaction hashes for the given block id. Mirrors
+    /// node RPC API.
     GetBlockWithTxHashes {
         /// The identifier of the block to retrieve.
         block_id: core_types::BlockId,
     },
-    /// Gets the block with full transactions for the given block id. Mirrors node RPC API.
+    /// Gets the block with full transactions for the given block id. Mirrors
+    /// node RPC API.
     GetBlockWithTxs {
         /// The identifier of the block to retrieve.
         block_id: core_types::BlockId,
     },
-    /// Gets the block with receipts for the given block id. Mirrors node RPC API.
+    /// Gets the block with receipts for the given block id. Mirrors node RPC
+    /// API.
     GetBlockWithReceipts {
         /// The identifier of the block to retrieve.
         block_id: core_types::BlockId,
@@ -51,7 +54,8 @@ pub enum NodeInstruction {
         /// The identifier of the block to retrieve.
         block_id: core_types::BlockId,
     },
-    /// Gets the value of a storage slot at a given contract address and key for a specific block.
+    /// Gets the value of a storage slot at a given contract address and key for
+    /// a specific block.
     GetStorageAt {
         /// The address of the contract to retrieve the storage slot from.
         contract_address: core_types::Felt,
@@ -210,26 +214,28 @@ pub enum Instruction {
     System(SystemInstruction),
 }
 
-/// Represents system-level instructions that can be sent to the [`Environment`] via the [`Socket`].
-///
+/// Represents system-level instructions that can be sent to the [`Environment`]
+/// via the [`Socket`].
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SystemInstruction {
     /// Stops the environment, stops listening for new events.
     Stop,
 }
 
-/// Represents the possible outcomes returned from processing [`SystemInstruction`]s.
-///
+/// Represents the possible outcomes returned from processing
+/// [`SystemInstruction`]s.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SystemInstructionOutcome {
     /// Indicates stop was successful.
     Stop,
 }
 
-/// Represents the possible outcomes returned from processing [`NodeInstruction`]s.
+/// Represents the possible outcomes returned from processing
+/// [`NodeInstruction`]s.
 ///
-/// Each variant corresponds to the result of a specific node instruction, mirroring the Starknet node RPC API.
-/// These outcomes are used to communicate results from the environment back to the middleware or client.
+/// Each variant corresponds to the result of a specific node instruction,
+/// mirroring the Starknet node RPC API. These outcomes are used to communicate
+/// results from the environment back to the middleware or client.
 ///
 /// Many variants wrap types from `starknet_core::types`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -315,7 +321,8 @@ pub enum Outcome {
 /// The result of executing a transaction.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum TxExecutionResult {
-    /// The transaction was successful and the outcome is an [`ExecutionResult`].
+    /// The transaction was successful and the outcome is an
+    /// [`ExecutionResult`].
     Success(TransactionHash, TransactionReceipt),
     /// The transaction failed and the outcome is a revert reason.
     Revert(String, TransactionReceipt),
@@ -330,18 +337,21 @@ pub enum CallExecutionResult {
     Failure(String),
 }
 
-/// [`ReceiptData`] holds the block number, transaction index, and cumulative gas used per block for a transaction.
+/// [`ReceiptData`] holds the block number, transaction index, and cumulative
+/// gas used per block for a transaction.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ReceiptData {
     /// The number of the block in which the transaction was included.
     pub block_number: BlockNumber,
     /// The index position of the transaction in the block.
     pub transaction_index: u64,
-    /// The total amount of gas used in the block up until and including the transaction.
+    /// The total amount of gas used in the block up until and including the
+    /// transaction.
     pub cumulative_gas_per_block: BigUint,
 }
 
-/// Cheat instructions that can be sent to the [`Environment`] via the [`Socket`].
+/// Cheat instructions that can be sent to the [`Environment`] via the
+/// [`Socket`].
 #[derive(Debug, Clone)]
 pub enum CheatInstruction {
     /// Declares a new contract.
@@ -376,7 +386,8 @@ pub enum CheatInstruction {
         /// The token symbol or identifier.
         token: TokenId, // need to create classifier
     },
-    /// Starts impersonation. Skips transaction validation if sent on behalf of an account with impersonated address.
+    /// Starts impersonation. Skips transaction validation if sent on behalf of
+    /// an account with impersonated address.
     Impersonate {
         /// The address to impersonate.
         address: Felt,
@@ -395,7 +406,8 @@ pub enum CheatInstruction {
         /// The value to set in the storage slot.
         value: Felt,
     },
-    /// Sets the gas modification for the next block. (And created a block if needed)
+    /// Sets the gas modification for the next block. (And created a block if
+    /// needed)
     SetNextBlockGas {
         /// The gas modification request.
         gas_modification: GasModificationRequest,
@@ -426,7 +438,8 @@ pub enum CheatcodesReturn {
     StopImpersonating,
     /// Indicates the storage slot was set.
     SetStorageAt,
-    /// Indicates the next block gas was set returning the gas modification values.
+    /// Indicates the next block gas was set returning the gas modification
+    /// values.
     SetNextBlockGas(GasModification),
     /// Returns the address of the deployed contract.
     GetDeployedContractAddress(Felt),

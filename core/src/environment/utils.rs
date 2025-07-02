@@ -1,13 +1,9 @@
-use crate::errors::StarkbiterCoreError;
-
 use starknet::core::types::Felt;
-
 use starknet_core::utils::get_storage_var_address;
 use starknet_devnet_core::{
     error::Error as DevnetError,
     state::{StarknetState, StateReader},
 };
-
 use starknet_devnet_types::{
     felt::join_felts,
     num_bigint::BigUint,
@@ -15,7 +11,10 @@ use starknet_devnet_types::{
     starknet_api::{core::ContractAddress, state::StorageKey},
 };
 
-/// This method utilizes direct access to Starknet state to mint tokens in an ERC20 contract.
+use crate::errors::StarkbiterCoreError;
+
+/// This method utilizes direct access to Starknet state to mint tokens in an
+/// ERC20 contract.
 pub fn mint_tokens_in_erc20_contract(
     state: &mut StarknetState,
     contract_address: Felt,

@@ -1,13 +1,13 @@
 //! The [`environment`] module provides abstractions and functionality for
 //! handling the Starknet execution environment. This includes managing its
-//! state, interfacing with the Starknet, and broadcasting events to subscribers.
-//! Other features include the ability to control block rate and gas settings
-//! and execute other database modifications from external agents.
+//! state, interfacing with the Starknet, and broadcasting events to
+//! subscribers. Other features include the ability to control block rate and
+//! gas settings and execute other database modifications from external agents.
 //!
 //! The key integration for the environment is the Starknet Devnet
 //! [`devnet`](https://github.com/0xSpaceShard/starknet-devnet).
-//! This is an implementation of the Starkent Sequencer wrapper in Rust that we utilize
-//! for processing raw smart contract bytecode.
+//! This is an implementation of the Starkent Sequencer wrapper in Rust that we
+//! utilize for processing raw smart contract bytecode.
 //!
 //! Core structures:
 //! - [`Environment`]: Represents the Starknet execution environment, allowing
@@ -22,40 +22,45 @@ use std::thread::{self, JoinHandle};
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 use starknet::providers::Url;
 use starknet_core::types as core_types;
-use starknet_devnet_core::constants::{self as devnet_constants};
-
-use starknet_devnet_core::error::Error as DevnetError;
-use starknet_devnet_core::starknet::starknet_config::ForkConfig;
-use starknet_devnet_core::state::{CustomState, CustomStateReader, State};
 use starknet_devnet_core::{
-    starknet::{starknet_config::StarknetConfig, Starknet},
-    state::StateReader,
+    constants::{self as devnet_constants},
+    error::Error as DevnetError,
+    starknet::{
+        starknet_config::{ForkConfig, StarknetConfig},
+        Starknet,
+    },
+    state::{CustomState, CustomStateReader, State, StateReader},
 };
-use starknet_devnet_types::chain_id::ChainId;
-use starknet_devnet_types::contract_class::ContractClass;
-
-use starknet_devnet_types::rpc::block::BlockResult;
-use starknet_devnet_types::rpc::gas_modification::GasModificationRequest;
-use starknet_devnet_types::rpc::transaction_receipt::TransactionReceipt;
-use starknet_devnet_types::rpc::transactions::broadcasted_deploy_account_transaction_v3::BroadcastedDeployAccountTransactionV3;
-use starknet_devnet_types::rpc::transactions::{
-    BroadcastedDeclareTransaction, BroadcastedDeployAccountTransaction,
-    BroadcastedInvokeTransaction, BroadcastedTransaction, SimulationFlag,
+use starknet_devnet_types::{
+    chain_id::ChainId,
+    contract_address::ContractAddress,
+    contract_class::ContractClass,
+    num_bigint::BigUint,
+    rpc::{
+        block::BlockResult,
+        gas_modification::GasModificationRequest,
+        transaction_receipt::TransactionReceipt,
+        transactions::{
+            broadcasted_deploy_account_transaction_v3::BroadcastedDeployAccountTransactionV3,
+            BroadcastedDeclareTransaction, BroadcastedDeployAccountTransaction,
+            BroadcastedInvokeTransaction, BroadcastedTransaction, SimulationFlag,
+        },
+    },
+    starknet_api,
+    starknet_api::{
+        core as api_core,
+        state::StorageKey,
+        transaction::{
+            fields::{Calldata, ContractAddressSalt},
+            TransactionHasher,
+        },
+    },
+    traits::HashProducer,
 };
-use starknet_devnet_types::starknet_api;
-use starknet_devnet_types::starknet_api::transaction::fields::{Calldata, ContractAddressSalt};
-use starknet_devnet_types::starknet_api::transaction::TransactionHasher;
-use starknet_devnet_types::traits::HashProducer;
-use starknet_devnet_types::{contract_address::ContractAddress, num_bigint::BigUint};
-
-use starknet_devnet_types::starknet_api::core as api_core;
-use starknet_devnet_types::starknet_api::state::StorageKey;
-
 use tokio::sync::broadcast::channel;
 
-use crate::tokens::get_token_data;
-
 use super::*;
+use crate::tokens::get_token_data;
 
 pub mod instruction;
 use instruction::{Instruction, NodeInstruction, NodeOutcome, Outcome};
@@ -79,8 +84,8 @@ pub(crate) type OutcomeReceiver = Receiver<Result<Outcome, StarkbiterCoreError>>
 /// Represents a sandboxed Starknet environment.
 ///
 /// ## Features
-/// * Starknet Devnet and its connections to the "outside world" (agents) via the
-///   [`Socket`] provide the [`Environment`] a means to route and execute
+/// * Starknet Devnet and its connections to the "outside world" (agents) via
+///   the [`Socket`] provide the [`Environment`] a means to route and execute
 ///   transactions.
 /// * [`EnvironmentParameters`] are used to set the gas limit, contract size
 ///   limit, and label for the [`Environment`].
@@ -119,10 +124,12 @@ pub struct EnvironmentParameters {
     /// The URL of JSON RPC node endpoing to fork the Starknet network from.
     pub starknet_fork_url: Option<String>,
 
-    /// The block number to fork the Starknet network from. Should be specified with starknet_fork_block_hash.
+    /// The block number to fork the Starknet network from. Should be specified
+    /// with starknet_fork_block_hash.
     pub starknet_fork_block_number: Option<u64>,
 
-    /// The block hash to fork the Starknet network from. Should be specified with starknet_fork_block_number.
+    /// The block hash to fork the Starknet network from. Should be specified
+    /// with starknet_fork_block_number.
     pub starknet_fork_block_hash: Option<core_types::Felt>,
 
     /// Enables inner contract logs to be printed to the console.
@@ -229,7 +236,8 @@ impl Environment {
             (ForkConfig::default(), true)
         };
 
-        // Move the Starknet Devnet and its socket to a new thread and retrieve this handle
+        // Move the Starknet Devnet and its socket to a new thread and retrieve this
+        // handle
         let handle = thread::spawn(move || {
             let result = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
@@ -244,7 +252,8 @@ impl Environment {
 
                     // TODO: support forking
                     // TODO: Simulated block production
-                    // TODO: every instruction whould encapsulate handling logic, that would allow to simplify the code and split environment mod to smaller chunks.
+                    // TODO: every instruction whould encapsulate handling logic, that would allow
+                    // to simplify the code and split environment mod to smaller chunks.
                     process_instructions(
                         starknet_config,
                         label.unwrap_or_else(|| "default".to_string()),
@@ -1463,8 +1472,9 @@ async fn process_instructions(
                         continue;
                     }
 
-                    // NOTE: this strategy might not work for all tokens. l2 message strategy should work.
-                    // But probably it's better to be implemented on higher level.
+                    // NOTE: this strategy might not work for all tokens. l2 message strategy should
+                    // work. But probably it's better to be implemented on
+                    // higher level.
                     let mint_result = utils::mint_tokens_in_erc20_contract(
                         &mut state,
                         token_data.unwrap().l2_token_address,

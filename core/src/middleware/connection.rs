@@ -2,12 +2,9 @@
 use std::{pin::Pin, sync::Weak};
 
 use async_trait;
-
 use futures::Stream;
 use starknet::providers::{Provider, ProviderError};
-
 use starknet_core::types::{self as core_types, EventFilter};
-
 use starknet_devnet_types::num_bigint::BigUint;
 use tokio::sync::broadcast;
 
@@ -76,11 +73,13 @@ impl Connection {
         return Ok(res);
     }
 
-    /// Subscribes to a stream of emitted event vectors. Vectors are produced the moment new
-    /// block is created. Events are filtered and only events of type `T` are returned.
+    /// Subscribes to a stream of emitted event vectors. Vectors are produced
+    /// the moment new block is created. Events are filtered and only events
+    /// of type `T` are returned.
     ///
     /// # Type Parameters
-    /// * `T` - A type that can be constructed from a reference to `EmittedEvent`.
+    /// * `T` - A type that can be constructed from a reference to
+    ///   `EmittedEvent`.
     pub async fn subscribe_to<T>(&self) -> Pin<Box<dyn Stream<Item = Vec<T>> + Send + Sync>>
     where
         T: for<'a> TryFrom<&'a EmittedEvent> + Send + Sync,
@@ -343,7 +342,8 @@ impl Provider for Connection {
         }
     }
 
-    /// Gets block information with full transactions and receipts given the block id.
+    /// Gets block information with full transactions and receipts given the
+    /// block id.
     async fn get_block_with_receipts<B>(
         &self,
         block_id: B,
@@ -412,8 +412,9 @@ impl Provider for Connection {
         }
     }
 
-    /// Given an l1 tx hash, returns the associated l1_handler tx hashes and statuses for all L1 ->
-    /// L2 messages sent by the l1 transaction, ordered by the l1 tx sending order
+    /// Given an l1 tx hash, returns the associated l1_handler tx hashes and
+    /// statuses for all L1 -> L2 messages sent by the l1 transaction,
+    /// ordered by the l1 tx sending order
     async fn get_messages_status(
         &self,
         transaction_hash: core_types::Hash256,
@@ -429,8 +430,8 @@ impl Provider for Connection {
         }
     }
 
-    /// Gets the transaction status (possibly reflecting that the tx is still in the mempool, or
-    /// dropped from it).
+    /// Gets the transaction status (possibly reflecting that the tx is still in
+    /// the mempool, or dropped from it).
     async fn get_transaction_status<H>(
         &self,
         transaction_hash: H,
@@ -516,7 +517,8 @@ impl Provider for Connection {
         }
     }
 
-    /// Gets the contract class definition in the given block associated with the given hash.
+    /// Gets the contract class definition in the given block associated with
+    /// the given hash.
     async fn get_class<B, H>(
         &self,
         block_id: B,
@@ -540,8 +542,8 @@ impl Provider for Connection {
         }
     }
 
-    /// Gets the contract class hash in the given block for the contract deployed at the given
-    /// address.
+    /// Gets the contract class hash in the given block for the contract
+    /// deployed at the given address.
     async fn get_class_hash_at<B, A>(
         &self,
         block_id: B,
@@ -565,7 +567,8 @@ impl Provider for Connection {
         }
     }
 
-    /// Gets the contract class definition in the given block at the given address.
+    /// Gets the contract class definition in the given block at the given
+    /// address.
     async fn get_class_at<B, A>(
         &self,
         block_id: B,
@@ -725,7 +728,8 @@ impl Provider for Connection {
         }
     }
 
-    /// Returns an object about the sync status, or false if the node is not synching.
+    /// Returns an object about the sync status, or false if the node is not
+    /// synching.
     async fn syncing(&self) -> Result<core_types::SyncStatusType, ProviderError> {
         let to_send = Instruction::Node(NodeInstruction::Syncing);
 
@@ -785,9 +789,9 @@ impl Provider for Connection {
         }
     }
 
-    /// Get merkle paths in one of the state tries: global state, classes, individual contract.
-    /// A single request can query for any mix of the three types of storage proofs (classes,
-    /// contracts, and storage).
+    /// Get merkle paths in one of the state tries: global state, classes,
+    /// individual contract. A single request can query for any mix of the
+    /// three types of storage proofs (classes, contracts, and storage).
     async fn get_storage_proof<B, H, A, K>(
         &self,
         _block_id: B,
@@ -867,8 +871,8 @@ impl Provider for Connection {
         }
     }
 
-    /// For a given executed transaction, returns the trace of its execution, including internal
-    /// calls.
+    /// For a given executed transaction, returns the trace of its execution,
+    /// including internal calls.
     async fn trace_transaction<H>(
         &self,
         transaction_hash: H,
@@ -889,13 +893,15 @@ impl Provider for Connection {
         }
     }
 
-    /// Simulates a given sequence of transactions on the requested state, and generate the
-    /// execution traces. Note that some of the transactions may revert, in which case no error is
-    /// thrown, but revert details can be seen on the returned trace object.
+    /// Simulates a given sequence of transactions on the requested state, and
+    /// generate the execution traces. Note that some of the transactions
+    /// may revert, in which case no error is thrown, but revert details can
+    /// be seen on the returned trace object.
     ///
-    /// Note that some of the transactions may revert, this will be reflected by the `revert_error`
-    /// property in the trace. Other types of failures (e.g. unexpected error or failure in the
-    /// validation phase) will result in `TRANSACTION_EXECUTION_ERROR`.
+    /// Note that some of the transactions may revert, this will be reflected by
+    /// the `revert_error` property in the trace. Other types of failures
+    /// (e.g. unexpected error or failure in the validation phase) will
+    /// result in `TRANSACTION_EXECUTION_ERROR`.
     async fn simulate_transactions<B, T, S>(
         &self,
         block_id: B,
@@ -943,8 +949,9 @@ impl Provider for Connection {
         }
     }
 
-    /// Sends multiple requests in parallel. The function call fails if any of the requests fails.
-    /// Implementations must guarantee that responses follow the exact order as the requests.
+    /// Sends multiple requests in parallel. The function call fails if any of
+    /// the requests fails. Implementations must guarantee that responses
+    /// follow the exact order as the requests.
     async fn batch_requests<R>(
         &self,
         _requests: R,

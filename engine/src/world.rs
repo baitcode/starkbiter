@@ -1,4 +1,5 @@
-//! The world module contains the core world abstraction for the Starkbiter Engine.
+//! The world module contains the core world abstraction for the Starkbiter
+//! Engine.
 
 use std::collections::VecDeque;
 

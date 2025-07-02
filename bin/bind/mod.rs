@@ -7,8 +7,9 @@ use inflector::Inflector;
 
 /// Uses cainome from cartridge to generate bindings.
 ///
-/// This function takes one directory as a source path and other as a destination path.
-/// Searches source files for JSON files and generates Rust bindings for each one of them.
+/// This function takes one directory as a source path and other as a
+/// destination path. Searches source files for JSON files and generates Rust
+/// bindings for each one of them.
 ///
 /// # Returns
 ///

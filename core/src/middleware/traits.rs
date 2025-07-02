@@ -3,43 +3,47 @@
 //!
 //!
 //! Main components:
-//! - [`Middleware`]: The trait that defines the interface for middleware implementations.
-//!
+//! - [`Middleware`]: The trait that defines the interface for middleware
+//!   implementations.
 use async_trait::async_trait;
 use auto_impl::auto_impl;
-
-use starknet_accounts::SingleOwnerAccount;
-use starknet_devnet_types::num_bigint::BigUint;
-
-use super::*;
-use crate::tokens::TokenId;
 use starknet::{
     core::types::{BlockId, Felt},
     providers::{ProviderError, ProviderRequestData, ProviderResponseData},
     signers::{LocalWallet, SigningKey},
 };
+use starknet_accounts::SingleOwnerAccount;
 use starknet_core::types::{self as core_types};
+use starknet_devnet_types::num_bigint::BigUint;
+
+use super::*;
+use crate::tokens::TokenId;
 
 /// The `Middleware` trait defines the interface for middleware implementations.
 ///
-/// Middleware wraps Connection and/or other middleware, allowing for method decoration.
+/// Middleware wraps Connection and/or other middleware, allowing for method
+/// decoration.
 ///
-/// It implements all the methods from Provider trait and CheatingProvider trait, as well as additional
-/// convenience methods for dealing with accounts from starknet-rs crate.
+/// It implements all the methods from Provider trait and CheatingProvider
+/// trait, as well as additional convenience methods for dealing with accounts
+/// from starknet-rs crate.
 ///
-/// This trait contains default implementations for all methods, proxying all calls to the underlying
-/// layer. Use with caution, as it may lead to stack overflow error.
+/// This trait contains default implementations for all methods, proxying all
+/// calls to the underlying layer. Use with caution, as it may lead to stack
+/// overflow error.
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[auto_impl(&, Box, Arc)]
 pub trait Middleware {
-    /// The inner type of the middleware, which is another Middleware implementation.
+    /// The inner type of the middleware, which is another Middleware
+    /// implementation.
     type Inner: Middleware + Send + Sync;
 
     /// Returns the reference to the middleware it wraps.
     fn inner(&self) -> &Self::Inner;
 
-    /// Returns the connection to the underlying provider (the deepest middleware's connection).
+    /// Returns the connection to the underlying provider (the deepest
+    /// middleware's connection).
     fn connection(&self) -> &Connection;
 
     /// Creates a new block in the underlying provider.
@@ -47,8 +51,8 @@ pub trait Middleware {
         self.inner().create_block().await
     }
 
-    /// Checks if transaction contains UDC deploy contract event fetches first and returns
-    /// address from it.
+    /// Checks if transaction contains UDC deploy contract event fetches first
+    /// and returns address from it.
     async fn get_deployed_contract_address<F>(&self, tx_hash: F) -> Result<Felt, ProviderError>
     where
         F: Into<Felt> + Send + Sync,
@@ -56,8 +60,8 @@ pub trait Middleware {
         self.inner().get_deployed_contract_address(tx_hash).await
     }
 
-    /// Creates a new account with the given signing key, class hash, and prefunded balance.
-    /// Returns the address of the created account.
+    /// Creates a new account with the given signing key, class hash, and
+    /// prefunded balance. Returns the address of the created account.
     async fn create_account<V, F, I>(
         &self,
         signing_key: V,
@@ -100,8 +104,8 @@ pub trait Middleware {
             .await
     }
 
-    /// Top up the balance of the given receiver with the specified amount and token.
-    /// Uses smallest denomination of the token.
+    /// Top up the balance of the given receiver with the specified amount and
+    /// token. Uses smallest denomination of the token.
     async fn top_up_balance<C, B, T>(
         &self,
         receiver: C,
@@ -116,8 +120,8 @@ pub trait Middleware {
         self.inner().top_up_balance(receiver, amount, token).await
     }
 
-    /// Registers address for impersonation. Means that validation step for all transactions
-    /// from that address will be skipped.
+    /// Registers address for impersonation. Means that validation step for all
+    /// transactions from that address will be skipped.
     async fn impersonate<C>(&self, address: C) -> Result<(), ProviderError>
     where
         C: AsRef<Felt> + Send + Sync,
@@ -210,7 +214,8 @@ pub trait Middleware {
         self.inner().get_state_update(block_id).await
     }
 
-    /// Return the storage value at the given contract address and key for the specified block.
+    /// Return the storage value at the given contract address and key for the
+    /// specified block.
     async fn get_storage_at<A, K, B>(
         &self,
         contract_address: A,
@@ -257,7 +262,8 @@ pub trait Middleware {
         self.inner().get_transaction_by_hash(transaction_hash).await
     }
 
-    /// Returns the transaction by block ID and trancsaction index within the block.
+    /// Returns the transaction by block ID and trancsaction index within the
+    /// block.
     async fn get_transaction_by_block_id_and_index<B>(
         &self,
         block_id: B,
@@ -295,7 +301,8 @@ pub trait Middleware {
         self.inner().get_class(block_id, class_hash).await
     }
 
-    /// Returns the class hash at a given contract address for the specified block.
+    /// Returns the class hash at a given contract address for the specified
+    /// block.
     async fn get_class_hash_at<B, A>(
         &self,
         block_id: B,
@@ -340,7 +347,8 @@ pub trait Middleware {
         self.inner().call(request, block_id).await
     }
 
-    /// Simulates transactions against the state of the node and calculates the gas used.
+    /// Simulates transactions against the state of the node and calculates the
+    /// gas used.
     async fn estimate_fee<R, S, B>(
         &self,
         request: R,
@@ -385,13 +393,14 @@ pub trait Middleware {
         self.inner().chain_id().await
     }
 
-    /// Checks for state, by default it is `false` (inherited from devnet implementation).
+    /// Checks for state, by default it is `false` (inherited from devnet
+    /// implementation).
     async fn syncing(&self) -> Result<core_types::SyncStatusType, ProviderError> {
         self.inner().syncing().await
     }
 
-    /// Fetches events based on the provided filter. Allows for pagination using a
-    /// continuation token and chunk size.
+    /// Fetches events based on the provided filter. Allows for pagination using
+    /// a continuation token and chunk size.
     async fn get_events(
         &self,
         filter: core_types::EventFilter,
@@ -412,7 +421,8 @@ pub trait Middleware {
         self.inner().get_nonce(block_id, contract_address).await
     }
 
-    /// Returns the storage proof for the specified block, class hashes, contract addresses,
+    /// Returns the storage proof for the specified block, class hashes,
+    /// contract addresses,
     async fn get_storage_proof<B, H, A, K>(
         &self,
         block_id: B,
@@ -449,7 +459,8 @@ pub trait Middleware {
             .await
     }
 
-    /// Sends declare transaction for execution. (should not be used, check declare_contract method)
+    /// Sends declare transaction for execution. (should not be used, check
+    /// declare_contract method)
     async fn add_declare_transaction<D>(
         &self,
         declare_transaction: D,
@@ -486,8 +497,8 @@ pub trait Middleware {
         self.inner().trace_transaction(transaction_hash).await
     }
 
-    /// Simulates transactions against the state of the node and returns the results without
-    /// changing the state.
+    /// Simulates transactions against the state of the node and returns the
+    /// results without changing the state.
     async fn simulate_transactions<B, T, S>(
         &self,
         block_id: B,
@@ -515,7 +526,8 @@ pub trait Middleware {
         self.inner().trace_block_transactions(block_id).await
     }
 
-    /// Executes batch requests. Currently, it is not implemented and will return an error.
+    /// Executes batch requests. Currently, it is not implemented and will
+    /// return an error.
     async fn batch_requests<R>(
         &self,
         requests: R,

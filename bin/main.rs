@@ -3,7 +3,6 @@
 //! `Starkbiter` CLI Tool
 //!
 //! This tool is designed to facilitate the generation of contract bindings.
-//!
 
 use std::env;
 

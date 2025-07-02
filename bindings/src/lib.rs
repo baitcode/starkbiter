@@ -6,9 +6,8 @@ pub mod contracts_user_values;
 pub mod ekubo_core;
 pub mod erc_20_mintable_oz0;
 
-//
-// Saved contract compiled Sierra sources. Used for declaration of the contracts.
-// Should be moved to cainome.
+// Saved contract compiled Sierra sources. Used for declaration of the
+// contracts. Should be moved to cainome.
 //
 
 pub static COUNTER_CONTRACT_SIERRA: &str =

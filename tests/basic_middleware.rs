@@ -4,7 +4,6 @@ use starkbiter_core::{
     environment::Environment,
     middleware::{traits::Middleware, StarkbiterMiddleware},
 };
-
 use starknet_core::types::{BlockId, BlockTag, ContractClass, Felt, MaybePendingBlockWithTxs};
 use starknet_devnet_types::{chain_id::ChainId, rpc::gas_modification::GasModificationRequest};
 use url::Url;
@@ -218,7 +217,8 @@ async fn test_class_hash_at() {
     let _ = env.stop();
 }
 
-/// Skipped as devnet does not support class at for forked classes defined outside of current instance.
+/// Skipped as devnet does not support class at for forked classes defined
+/// outside of current instance.
 #[allow(unused)]
 async fn test_class_at() {
     // Custom chain ID for Starknet

@@ -8,12 +8,13 @@
 //! ██████████████████████████████████████████████████████████████████████████████████████████
 //! ```
 //!                                              
-//! `starkbiter-core` is designed to facilitate agent-based simulations over the Starknet
-//! sandbox in a local setting.
+//! `starkbiter-core` is designed to facilitate agent-based simulations over the
+//! Starknet sandbox in a local setting.
 //!
-//! With a primary emphasis on ease of use and performance, it eliminates the usage of
-//! intermediate JSON-RPC layer, allowing direct interaction with the Starknet Devnet and
-//! eliminating the need for expensive serialisation and deserialisation calls.
+//! With a primary emphasis on ease of use and performance, it eliminates the
+//! usage of intermediate JSON-RPC layer, allowing direct interaction with the
+//! Starknet Devnet and eliminating the need for expensive serialisation and
+//! deserialisation calls.
 //!
 //! Key Features:
 //! - **Environment Handling**: Detailed setup and control mechanisms for

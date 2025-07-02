@@ -1,3 +1,5 @@
+use std::num::NonZero;
+
 use cainome::cairo_serde::U256;
 use starkbiter_bindings::{
     contracts_router_lite,
@@ -13,16 +15,13 @@ use starkbiter_core::{
 };
 use starknet::signers::{LocalWallet, SigningKey};
 use starknet_accounts::{Account, SingleOwnerAccount};
-use starknet_devnet_core::constants::{self, ARGENT_CONTRACT_CLASS_HASH};
-use std::num::NonZero;
-use url::Url;
-
 use starknet_core::{
     types::{Call, Felt},
     utils::get_selector_from_name,
 };
-
+use starknet_devnet_core::constants::{self, ARGENT_CONTRACT_CLASS_HASH};
 use starknet_devnet_types::{chain_id::ChainId, rpc::gas_modification::GasModificationRequest};
+use url::Url;
 
 const ALL_GAS_1: GasModificationRequest = GasModificationRequest {
     gas_price_wei: NonZero::new(1_u128),
@@ -63,7 +62,7 @@ async fn deploy_swapper(
             Felt::from_hex_unchecked("0x123"),                             // salt
             Felt::ZERO,                                                    // unique
             Felt::TWO,                                                     // constructor length
-            Felt::from_hex_unchecked(MAINNET_EKUBO_CORE_CONTRACT_ADDRESS), // core ekubo contraict address
+            Felt::from_hex_unchecked(MAINNET_EKUBO_CORE_CONTRACT_ADDRESS), /* core ekubo contraict address */
             account.address(),                                             // withdrawal address
         ],
     }];
@@ -95,7 +94,7 @@ async fn deploy_router(
             Felt::from_hex_unchecked("0x123"),                             // salt
             Felt::ZERO,                                                    // unique
             Felt::ONE,                                                     // constructor length
-            Felt::from_hex_unchecked(MAINNET_EKUBO_CORE_CONTRACT_ADDRESS), // core ekubo contraict address
+            Felt::from_hex_unchecked(MAINNET_EKUBO_CORE_CONTRACT_ADDRESS), /* core ekubo contraict address */
         ],
     }];
 
@@ -200,7 +199,8 @@ async fn test_ekubo_swap_1eth_for_usdc_with_swapper() {
         sqrt_ratio_limit: U256 {
             low: 18446748437148339061,
             high: 0,
-        }, // actually sqrt(token1/token0) so sqrt(3000) would be enough, but I don't want to calculate fp value here
+        }, /* actually sqrt(token1/token0) so sqrt(3000) would be enough, but I don't want to
+            * calculate fp value here */
         amount: I129 {
             mag: fraction_of_eth,
             sign: false,
@@ -296,7 +296,8 @@ async fn test_ekubo_swap_1eth_for_usdc_with_swapper() {
     // Exeute swap
     // Check my balance.
 
-    // let swapper = contracts_swapper::ContractsSwapper::new(swapper_address, &account);
+    // let swapper = contracts_swapper::ContractsSwapper::new(swapper_address,
+    // &account);
 
     let _ = env.stop();
 }

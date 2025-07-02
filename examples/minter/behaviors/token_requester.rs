@@ -2,16 +2,13 @@ use std::num::NonZero;
 
 use starkbiter_bindings::{erc_20_mintable_oz0::ERC20ComponentEvent, ARGENT_V040_SIERRA};
 use starkbiter_core::middleware::traits::Middleware;
-
 use starknet_accounts::Account;
-
 use starknet_core::types::Felt;
 use starknet_devnet_types::rpc::gas_modification::GasModificationRequest;
-
-use super::*;
-
 use starknet_signers::SigningKey;
 use token_admin::{MintRequest, TokenAdminQuery};
+
+use super::*;
 
 /// The token requester is responsible for requesting tokens from the token
 /// admin. This agents is purely for testing purposes as far as I can tell.

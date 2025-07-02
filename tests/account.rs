@@ -1,3 +1,6 @@
+use std::{num::NonZero, str::FromStr};
+
+use cainome::cairo_serde::ContractAddress;
 use starkbiter_bindings::{contracts_counter::ContractsCounter, ARGENT_V040_SIERRA};
 use starkbiter_core::{
     environment::Environment,
@@ -5,16 +8,11 @@ use starkbiter_core::{
 };
 use starknet::signers::SigningKey;
 use starknet_accounts::Account;
-use starknet_devnet_core::constants;
-use std::{num::NonZero, str::FromStr};
-
-use cainome::cairo_serde::ContractAddress;
-
 use starknet_core::{
     types::{Call, Felt},
     utils::get_selector_from_name,
 };
-
+use starknet_devnet_core::constants;
 use starknet_devnet_types::{chain_id::ChainId, rpc::gas_modification::GasModificationRequest};
 
 const ALL_GAS_1: GasModificationRequest = GasModificationRequest {

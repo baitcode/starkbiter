@@ -1,4 +1,4 @@
-//! The messager module contains the core messager layer for the Arbiter Engine.
+//! The messager module contains the core messager layer for the Starkbiter Engine.
 
 use tokio::sync::broadcast::{channel, Receiver, Sender};
 

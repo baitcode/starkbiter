@@ -50,7 +50,7 @@ const ALL_GAS_1: GasModificationRequest = GasModificationRequest {
 
 #[tokio::test]
 async fn test_create_account_and_use_it_to_deploy_udc_erc20_contract() {
-    setup_log();
+    // setup_log();
 
     // Custom chain ID for Starknet
     let chain_id = ChainId::Custom(Felt::from_str("0x696e766f6b65").unwrap());

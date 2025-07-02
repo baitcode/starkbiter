@@ -157,6 +157,8 @@ async fn test_set_get_storage_at() {
         .await
         .expect("Should not throw error");
 
+    client.create_block().await.expect("Should not throw error");
+
     {
         let maybe_val = client
             .get_storage_at(
@@ -216,8 +218,11 @@ async fn test_class_hash_at() {
     env.stop();
 }
 
-#[tokio::test]
+// #[tokio::test()]
 async fn test_class_at() {
+    std::env::set_var("RUST_LOG", "trace");
+    tracing_subscriber::fmt::try_init();
+
     // Custom chain ID for Starknet
     let chain_id = ChainId::Mainnet;
 

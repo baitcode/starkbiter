@@ -26,7 +26,7 @@ use starknet_devnet_core::constants::{self as devnet_constants};
 
 use starknet_devnet_core::error::Error as DevnetError;
 use starknet_devnet_core::starknet::starknet_config::ForkConfig;
-use starknet_devnet_core::state::{CustomState, CustomStateReader, StarknetState};
+use starknet_devnet_core::state::{CustomState, CustomStateReader, StarknetState, State};
 use starknet_devnet_core::{
     starknet::{starknet_config::StarknetConfig, Starknet},
     state::StateReader,
@@ -446,32 +446,33 @@ async fn process_instructions(
                     );
                     let state = starknet.get_state();
 
-                    let contract_address = api_core::ContractAddress::try_from(*contract_address);
+                    let maybe_contract_address =
+                        api_core::ContractAddress::try_from(*contract_address);
 
-                    if let Err(err) = contract_address {
+                    if let Err(err) = maybe_contract_address {
                         sender.send(Err(StarkbiterCoreError::DevnetError(
                             DevnetError::StarknetApiError(err),
                         )));
                         continue;
                     }
 
-                    let storage_key = StorageKey::try_from(*key);
+                    let maybe_storage_key = StorageKey::try_from(*key);
 
-                    if let Err(err) = storage_key {
+                    if let Err(err) = maybe_storage_key {
                         sender.send(Err(StarkbiterCoreError::DevnetError(
                             DevnetError::StarknetApiError(err),
                         )));
                         continue;
                     }
 
-                    let outcome = state
-                        .get_storage_at(contract_address.unwrap(), storage_key.unwrap())
+                    let result = state
+                        .get_storage_at(maybe_contract_address.unwrap(), maybe_storage_key.unwrap())
                         .map_err(|e| {
                             StarkbiterCoreError::DevnetError(DevnetError::BlockifierStateError(e))
                         })
                         .map(|value| Outcome::Node(NodeOutcome::GetStorageAt(value)));
 
-                    sender.send(outcome);
+                    sender.send(result);
                 }
                 NodeInstruction::GetMessagesStatus { transaction_hash } => {
                     trace!(
@@ -1317,23 +1318,27 @@ async fn process_instructions(
 
                     let state = starknet.get_state();
 
-                    let patricia_key = PatriciaKey::try_from(*address).map_err(|e| {
-                        StarkbiterCoreError::DevnetError(DevnetError::StarknetApiError(e))
-                    });
+                    let maybe_address = api_core::ContractAddress::try_from(*address);
 
-                    if let Err(e) = patricia_key {
-                        sender.send(Err(e));
+                    if let Err(err) = maybe_address {
+                        sender.send(Err(StarkbiterCoreError::DevnetError(
+                            DevnetError::StarknetApiError(err),
+                        )));
+                        continue;
+                    }
+
+                    let maybe_storage_key = StorageKey::try_from(*key);
+
+                    if let Err(err) = maybe_storage_key {
+                        sender.send(Err(StarkbiterCoreError::DevnetError(
+                            DevnetError::StarknetApiError(err),
+                        )));
                         continue;
                     }
 
                     let result = state
                         .state
-                        .state
-                        .set_storage_at(
-                            api_core::ContractAddress(patricia_key.unwrap()),
-                            StorageKey::try_from(*key).unwrap(),
-                            *value,
-                        )
+                        .set_storage_at(maybe_address.unwrap(), maybe_storage_key.unwrap(), *value)
                         .map_err(|e| {
                             StarkbiterCoreError::DevnetError(DevnetError::BlockifierStateError(e))
                         })

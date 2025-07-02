@@ -112,7 +112,7 @@ async fn deploy_router(
 // TODO: optimize tick spacing and trading size for faster trades.
 #[tokio::test]
 async fn test_ekubo_swap_1eth_for_usdc_with_swapper() {
-    setup_log();
+    // setup_log();
 
     let fraction_of_eth = 1_00000000_00000000_00000_u128;
 
@@ -310,7 +310,7 @@ fn to_u256(value: u128) -> U256 {
 
 #[tokio::test]
 async fn test_ekubo_swap_1eth_for_usdc_with_router() {
-    setup_log();
+    // setup_log();
 
     let fraction_of_eth = 1_00000000_00000000_00000_u128;
 

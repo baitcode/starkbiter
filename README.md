@@ -50,18 +50,18 @@ The Starkbiter workspace has five crates:
 ## Book
 TODO: Does not exist yet
 
-## Motivation 
+## Motivation
 Starkbiter was adapted from [Arbiter](https://github.com/harnesslabs/arbiter) code to allow you to work with smart contracts in a stateful sandbox and thus design agents that can be used alongside the contracts.
 This gives you many capabilities.
 For instance, smart contract engineers must test their contracts against various potentially adversarial environments and parameters instead of relying on static and stateless testing.
 
-In Decentralized Finance (DeFi), a wide array of complex decentralized applications can use the testing described above. Still, implicit financial strategies also encompass many agents and parameterizations. 
+In Decentralized Finance (DeFi), a wide array of complex decentralized applications can use the testing described above. Still, implicit financial strategies also encompass many agents and parameterizations.
 A financial engineer may want to test their strategies against thousands of market conditions, contract settings, shocks, and autonomous or random AI agents while ensuring their approach isn't vulnerable to bytecode-level exploits.
 Likewise, the same engineer may want to develop searcher agents, solver agents, or other autonomous agents that can be run on the blockchain.
 
 ## Working with the Starkbiter Framework
-To work with Starkbiter, you must have Rust installed on your machine. 
-You can install Rust by following the instructions [here](https://www.rust-lang.org/tools/install). 
+To work with Starkbiter, you must have Rust installed on your machine.
+You can install Rust by following the instructions [here](https://www.rust-lang.org/tools/install).
 It will also be helpful to get the `cargo-generate` package, which you can install by doing:
 ```bash
 cargo install cargo-generate
@@ -77,7 +77,7 @@ cd starkbiter
 
 From here, you can now try running the following from the clone's root directory:
 ```bash
-cargo run --example minter 
+cargo run --example minter
 ```
 This command will enter the template CLI and show you the commands and flags.
 
@@ -96,11 +96,13 @@ This will install the Starkbiter binary on your machine. You can then run `stark
 
 ### Bindings
 You can put your compiled sierra 1.0 contract jsons in the `contracts/` directory of your templated project, you'll need to run:
+
 ```bash
 starkbiter bind
 ```
-to generate rust bindings and you are good to go. You can use those withing your contracts now.
-Starkbiter uses `cainome` to generate rust bindings and in turn `cainome` relies on starknet-rs account abstraction implementation. You can easily generate an account using `create_single_owner_account` method of the enviroment (and middleware) and pass it to create an instance of the contract you you want to execute.
+
+to generate rust bindings and you are good to go. You can use those within your contracts now.
+Starkbiter uses `cainome` to generate rust bindings and in turn `cainome` relies on starknet-rs account abstraction implementation. You can easily generate an account using `create_single_owner_account` method of the environment (and middleware) and pass it to create an instance of the contract you you want to execute.
 
 ### Forking
 To fork a state of an Starknet network, you need to specify fork parameters upon instantiating environment. Fork is being initialised lazily, this mechanics is inherited from starknet devnet implementation.
@@ -111,7 +113,7 @@ let env = Environment::builder()
     .with_fork(
         Url::from_str("http://json-rpc-provider-to-fork-from:1234").unwrap(),
         1000, // Block number to fork from
-        Some(Felt::from_str("0xblock_hash").unwrap()), 
+        Some(Felt::from_str("0xblock_hash").unwrap()),
     )
     .build();
 ```

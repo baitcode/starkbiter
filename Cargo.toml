@@ -94,7 +94,6 @@ starknet-accounts.workspace = true
 starknet-signers.workspace = true
 starknet-devnet-core.workspace = true
 starknet-devnet-types.workspace = true
-starknet_api.workspace = true
 
 cainome.workspace = true
 futures.workspace = true
@@ -105,13 +104,8 @@ serde.workspace = true
 serde_json.workspace = true
 config = { version = "=0.14.0" }
 toml.workspace = true
-proc-macro2.workspace = true
-syn.workspace = true
 Inflector = { version = "=0.11.4" }
 
-# Building files
-foundry-config = { version = "=0.2.0" }
-tempfile = { version = "3.10.1" }
 
 # Errors
 thiserror.workspace = true
@@ -141,6 +135,6 @@ assert_cmd = { version = "=2.0.14" }
 [profile.release]
 # Link-Time Optimization can improve runtime at cost of build time
 lto = true
-# The Rust compiler splits your crate into multiple codegen units to parallelize (and thus speed up) compilation but at the cost of optimization. 
+# The Rust compiler splits your crate into multiple codegen units to parallelize (and thus speed up) compilation but at the cost of optimization.
 # This setting tells the compiler to use only one codegen unit, which will slow down compilation but improve optimization.
 codegen-units = 1

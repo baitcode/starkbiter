@@ -12,15 +12,10 @@ homepage = "https://github.com/astraly-labs/starkbiter"
 repository = "https://github.com/astraly-labs/starkbiter"
 
 [dependencies]
-starkbiter-bindings.workspace = true
 starkbiter-core.workspace = true
 starkbiter-macros.workspace = true
 
-ethers.workspace = true
-
 tokio.workspace = true
-tokio-stream = "0.1.15"
-futures.workspace = true
 futures-util.workspace = true
 async-trait.workspace = true
 async-stream.workspace = true
@@ -32,8 +27,6 @@ toml.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 anyhow.workspace = true
-
-crossbeam-channel.workspace = true
 
 [dev-dependencies]
 starkbiter-core.workspace = true

@@ -9,11 +9,6 @@ license = "Apache-2.0"
 
 [dependencies]
 starknet.workspace = true
-starknet-core.workspace = true
-starknet-accounts.workspace = true
-starknet-signers.workspace = true
-starknet_api.workspace = true
 
 cainome.workspace = true
 serde.workspace = true
-serde_json.workspace = true

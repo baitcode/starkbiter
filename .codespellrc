@@ -1,0 +1,5 @@
+[codespell]
+check-hidden =
+check-filenames =
+skip = .git,Cargo.lock,target,CHANGELOG.md,engine,core,macros,examples,bindings,bin
+ignore-words-list = crate,Crate,functio

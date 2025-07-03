@@ -13,4 +13,4 @@ tokio = "1.36.0"
 skeptic = "0.13.7"
 starkbiter-core.workspace = true
 starkbiter-bindings.workspace = true
-revm-primitives.workspace = true
+# revm-primitives.workspace = true

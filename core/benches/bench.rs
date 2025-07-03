@@ -243,22 +243,24 @@ async fn stateful_call_loop<A: ConnectedAccount + Sync + Clone>(
     duration
 }
 
-// fn create_dataframe(results: &HashMap<&str, HashMap<&str, Duration>>, group: &[&str]) -> DataFrame {
-//     let operations = ["Deploy", "Lookup", "Stateless Call", "Stateful Call"];
-//     let mut df = DataFrame::new(vec![
+// fn create_dataframe(results: &HashMap<&str, HashMap<&str, Duration>>, group:
+// &[&str]) -> DataFrame {     let operations = ["Deploy", "Lookup", "Stateless
+// Call", "Stateful Call"];     let mut df = DataFrame::new(vec![
 //         Series::new("Operation", operations.to_vec()),
 //         Series::new(
 //             &format!("{} (μs)", group[0]),
 //             operations
 //                 .iter()
-//                 .map(|&op| results.get(group[0]).unwrap().get(op).unwrap().as_micros() as f64)
+//                 .map(|&op|
+// results.get(group[0]).unwrap().get(op).unwrap().as_micros() as f64)
 //                 .collect::<Vec<_>>(),
 //         ),
 //         Series::new(
 //             &format!("{} (μs)", group[1]),
 //             operations
 //                 .iter()
-//                 .map(|&op| results.get(group[1]).unwrap().get(op).unwrap().as_micros() as f64)
+//                 .map(|&op|
+// results.get(group[1]).unwrap().get(op).unwrap().as_micros() as f64)
 //                 .collect::<Vec<_>>(),
 //         ),
 //     ])
@@ -268,8 +270,8 @@ async fn stateful_call_loop<A: ConnectedAccount + Sync + Clone>(
 //     let s1 = df.column(&format!("{} (μs)", group[1])).unwrap().to_owned();
 //     let mut relative_difference = s0.divide(&s1).unwrap();
 
-//     df.with_column::<Series>(relative_difference.rename("Relative Speedup").clone())
-//         .unwrap()
+//     df.with_column::<Series>(relative_difference.rename("Relative
+// Speedup").clone())         .unwrap()
 //         .clone()
 // }
 

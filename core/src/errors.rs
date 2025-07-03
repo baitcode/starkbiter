@@ -1,12 +1,11 @@
-//! Errors that can occur when managing or interfacing with Starkbiter's sandboxed
-//! Starknet Devnet environment.
+//! Errors that can occur when managing or interfacing with Starkbiter's
+//! sandboxed Starknet Devnet environment.
 
 use std::sync::{PoisonError, RwLockWriteGuard};
 
 use crossbeam_channel::{RecvError, SendError};
-use thiserror::Error;
-
 use starknet_devnet_core::error::Error;
+use thiserror::Error;
 
 use self::environment::instruction::{Instruction, Outcome};
 use super::*;
@@ -18,6 +17,7 @@ pub enum StarkbiterCoreError {
     #[error("Account already exists!")]
     AccountCreationError,
 
+    /// Failed to calculate the account address.
     #[error("Cant calculate account address!")]
     AccountAddressError,
 
@@ -66,28 +66,17 @@ pub enum StarkbiterCoreError {
     #[error(transparent)]
     DevnetError(#[from] Error),
 
-    // /// Provider error.
-    // #[error(transparent)]
-    // ProviderError(#[from] ProviderError),
-    /// Wallet error.
-    // #[error(transparent)]
-    // WalletError(#[from] WalletError),
-
     /// Send error.
     #[error(transparent)]
     SendError(
         #[from]
         #[allow(private_interfaces)]
-        SendError<Instruction>,
+        Box<SendError<Instruction>>,
     ),
 
     /// Recv error.
     #[error(transparent)]
     RecvError(#[from] RecvError),
-
-    /// Failed to parse integer from string.
-    // #[error(transparent)]
-    // FromStrRadixError(#[from] uint::FromStrRadixErr),
 
     /// Failed to handle json.
     #[error(transparent)]

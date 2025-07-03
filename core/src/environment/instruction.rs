@@ -2,16 +2,10 @@
 //! communicate instructions and their outcomes between the
 //! [`middleware::StarkbiterMiddleware`] and the [`Environment`].
 
-use std::alloc::System;
-
-use starknet::{
-    core::types::Felt,
-    signers::{SigningKey, VerifyingKey},
-};
-
+use starknet::{core::types::Felt, signers::SigningKey};
 use starknet_core::types as core_types;
 use starknet_devnet_types::{
-    felt::{Calldata, TransactionHash},
+    felt::TransactionHash,
     num_bigint::BigUint,
     rpc::{
         gas_modification::GasModification, transaction_receipt::TransactionReceipt,
@@ -20,9 +14,8 @@ use starknet_devnet_types::{
     starknet_api::block::BlockNumber,
 };
 
-use crate::tokens::TokenId;
-
 use super::*;
+use crate::tokens::TokenId;
 
 /// Instructions that can be sent to the [`Environment`] via the [`Socket`].
 ///
@@ -30,23 +23,28 @@ use super::*;
 /// [`Socket::instruction_sender`] and the results are received via the
 /// [`crate::middleware::Connection::outcome_receiver`].
 ///
-/// TODO: This is actually a ProviderRequestData from starknet-rs, but they lack `Deserialize` and `PartialEq`.
+/// TODO: This is actually a ProviderRequestData from starknet-rs, but they lack
+/// `Deserialize` and `PartialEq`.
 #[derive(Debug, Clone)]
 pub enum NodeInstruction {
-    /// Gets the specification version of the node. Returns a constant "unknown".
+    /// Gets the specification version of the node. Returns a constant
+    /// "unknown".
     GetSpecVersion,
 
-    /// Gets the block with transaction hashes for the given block id. Mirrors node RPC API.
+    /// Gets the block with transaction hashes for the given block id. Mirrors
+    /// node RPC API.
     GetBlockWithTxHashes {
         /// The identifier of the block to retrieve.
         block_id: core_types::BlockId,
     },
-    /// Gets the block with full transactions for the given block id. Mirrors node RPC API.
+    /// Gets the block with full transactions for the given block id. Mirrors
+    /// node RPC API.
     GetBlockWithTxs {
         /// The identifier of the block to retrieve.
         block_id: core_types::BlockId,
     },
-    /// Gets the block with receipts for the given block id. Mirrors node RPC API.
+    /// Gets the block with receipts for the given block id. Mirrors node RPC
+    /// API.
     GetBlockWithReceipts {
         /// The identifier of the block to retrieve.
         block_id: core_types::BlockId,
@@ -56,7 +54,8 @@ pub enum NodeInstruction {
         /// The identifier of the block to retrieve.
         block_id: core_types::BlockId,
     },
-    /// Gets the value of a storage slot at a given contract address and key for a specific block.
+    /// Gets the value of a storage slot at a given contract address and key for
+    /// a specific block.
     GetStorageAt {
         /// The address of the contract to retrieve the storage slot from.
         contract_address: core_types::Felt,
@@ -215,20 +214,28 @@ pub enum Instruction {
     System(SystemInstruction),
 }
 
+/// Represents system-level instructions that can be sent to the [`Environment`]
+/// via the [`Socket`].
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SystemInstruction {
+    /// Stops the environment, stops listening for new events.
     Stop,
 }
 
+/// Represents the possible outcomes returned from processing
+/// [`SystemInstruction`]s.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SystemInstructionOutcome {
+    /// Indicates stop was successful.
     Stop,
 }
 
-/// Represents the possible outcomes returned from processing [`NodeInstruction`]s.
+/// Represents the possible outcomes returned from processing
+/// [`NodeInstruction`]s.
 ///
-/// Each variant corresponds to the result of a specific node instruction, mirroring the Starknet node RPC API.
-/// These outcomes are used to communicate results from the environment back to the middleware or client.
+/// Each variant corresponds to the result of a specific node instruction,
+/// mirroring the Starknet node RPC API. These outcomes are used to communicate
+/// results from the environment back to the middleware or client.
 ///
 /// Many variants wrap types from `starknet_core::types`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -236,13 +243,13 @@ pub enum NodeOutcome {
     /// The specification version of the node.
     SpecVersion(String),
     /// The block with transaction hashes, or a pending block.
-    GetBlockWithTxHashes(core_types::MaybePendingBlockWithTxHashes),
+    GetBlockWithTxHashes(Box<core_types::MaybePendingBlockWithTxHashes>),
     /// The block with full transactions, or a pending block.
-    GetBlockWithTxs(core_types::MaybePendingBlockWithTxs),
+    GetBlockWithTxs(Box<core_types::MaybePendingBlockWithTxs>),
     /// The block with receipts, or a pending block.
-    GetBlockWithReceipts(core_types::MaybePendingBlockWithReceipts),
+    GetBlockWithReceipts(Box<core_types::MaybePendingBlockWithReceipts>),
     /// The state update for a given block, or a pending state update.
-    GetStateUpdate(core_types::MaybePendingStateUpdate),
+    GetStateUpdate(Box<core_types::MaybePendingStateUpdate>),
     /// The value of a storage slot.
     GetStorageAt(core_types::Felt),
     /// The status of L1/L2 messages for a transaction.
@@ -250,17 +257,17 @@ pub enum NodeOutcome {
     /// The status of a transaction.
     GetTransactionStatus(core_types::TransactionStatus),
     /// The transaction details by hash.
-    GetTransactionByHash(core_types::Transaction),
+    GetTransactionByHash(Box<core_types::Transaction>),
     /// The transaction details by block id and index.
-    GetTransactionByBlockIdAndIndex(core_types::Transaction),
+    GetTransactionByBlockIdAndIndex(Box<core_types::Transaction>),
     /// The transaction receipt with block info.
-    GetTransactionReceipt(core_types::TransactionReceiptWithBlockInfo),
+    GetTransactionReceipt(Box<core_types::TransactionReceiptWithBlockInfo>),
     /// The contract class for a given class hash.
-    GetClass(core_types::ContractClass),
+    GetClass(Box<core_types::ContractClass>),
     /// The class hash at a contract address.
     GetClassHashAt(core_types::Felt),
     /// The contract class at a contract address.
-    GetClassAt(core_types::ContractClass),
+    GetClassAt(Box<core_types::ContractClass>),
     /// The number of transactions in a block.
     GetBlockTransactionCount(u64),
     /// The result of a contract call.
@@ -268,7 +275,7 @@ pub enum NodeOutcome {
     /// The estimated fee(s) for a transaction.
     EstimateFee(Vec<core_types::FeeEstimate>),
     /// The estimated fee for a message from L1.
-    EstimateMessageFee(core_types::FeeEstimate),
+    EstimateMessageFee(Box<core_types::FeeEstimate>),
     /// The current block number.
     BlockNumber(u64),
     /// The current block hash and number.
@@ -276,13 +283,13 @@ pub enum NodeOutcome {
     /// The chain ID.
     ChainId(core_types::Felt),
     /// The syncing status of the node.
-    Syncing(core_types::SyncStatusType),
+    Syncing(Box<core_types::SyncStatusType>),
     /// The page of events matching a filter.
     GetEvents(core_types::EventsPage),
     /// The nonce for a contract.
     GetNonce(core_types::Felt),
     /// The storage proof for a contract and key.
-    GetStorageProof(core_types::StorageProof),
+    GetStorageProof(Box<core_types::StorageProof>),
     /// The result of adding an invoke transaction.
     AddInvokeTransaction(core_types::InvokeTransactionResult),
     /// The result of adding a declare transaction.
@@ -290,7 +297,7 @@ pub enum NodeOutcome {
     /// The result of adding a deploy account transaction.
     AddDeployAccountTransaction(core_types::DeployAccountTransactionResult),
     /// The trace of a transaction.
-    TraceTransaction(core_types::TransactionTrace),
+    TraceTransaction(Box<core_types::TransactionTrace>),
     /// The result of simulating transactions.
     SimulateTransactions(Vec<core_types::SimulatedTransaction>),
     /// The traces of all transactions in a block.
@@ -307,13 +314,15 @@ pub enum Outcome {
     Node(NodeOutcome),
     /// Cheatcode-related outcome.
     Cheat(CheatcodesReturn),
+    /// System-related outcome.
     System(SystemInstructionOutcome),
 }
 
 /// The result of executing a transaction.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum TxExecutionResult {
-    /// The transaction was successful and the outcome is an [`ExecutionResult`].
+    /// The transaction was successful and the outcome is an
+    /// [`ExecutionResult`].
     Success(TransactionHash, TransactionReceipt),
     /// The transaction failed and the outcome is a revert reason.
     Revert(String, TransactionReceipt),
@@ -328,20 +337,24 @@ pub enum CallExecutionResult {
     Failure(String),
 }
 
-/// [`ReceiptData`] holds the block number, transaction index, and cumulative gas used per block for a transaction.
+/// [`ReceiptData`] holds the block number, transaction index, and cumulative
+/// gas used per block for a transaction.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ReceiptData {
     /// The number of the block in which the transaction was included.
     pub block_number: BlockNumber,
     /// The index position of the transaction in the block.
     pub transaction_index: u64,
-    /// The total amount of gas used in the block up until and including the transaction.
+    /// The total amount of gas used in the block up until and including the
+    /// transaction.
     pub cumulative_gas_per_block: BigUint,
 }
 
-/// Cheat instructions that can be sent to the [`Environment`] via the [`Socket`].
+/// Cheat instructions that can be sent to the [`Environment`] via the
+/// [`Socket`].
 #[derive(Debug, Clone)]
 pub enum CheatInstruction {
+    /// Declares a new contract.
     DeclareContract {
         /// The class hash of the contract to declare.
         // class_hash: Felt,
@@ -364,6 +377,7 @@ pub enum CheatInstruction {
         /// The L1 handler transaction.
         l1_handler_transaction: L1HandlerTransaction,
     },
+    /// Mints tokens in respective ERC20 contract for an account.
     TopUpBalance {
         /// The address to top up.
         receiver: Felt,
@@ -372,17 +386,18 @@ pub enum CheatInstruction {
         /// The token symbol or identifier.
         token: TokenId, // need to create classifier
     },
-
+    /// Starts impersonation. Skips transaction validation if sent on behalf of
+    /// an account with impersonated address.
     Impersonate {
         /// The address to impersonate.
         address: Felt,
     },
-
+    /// Stops impersonation.
     StopImpersonating {
         /// The address to stop impersonating.
         address: Felt,
     },
-
+    /// Sets a value in the storage slot of a contract.
     SetStorageAt {
         /// The address of the contract.
         address: Felt,
@@ -391,12 +406,15 @@ pub enum CheatInstruction {
         /// The value to set in the storage slot.
         value: Felt,
     },
-
+    /// Sets the gas modification for the next block. (And created a block if
+    /// needed)
     SetNextBlockGas {
+        /// The gas modification request.
         gas_modification: GasModificationRequest,
     },
-
+    /// Extracts the deployed contract address from a deployment transaction.
     GetDeployedContractAddress {
+        /// The transaction hash of the deployment.
         tx_hash: Felt,
     },
 }
@@ -404,6 +422,7 @@ pub enum CheatInstruction {
 /// Return values of applying cheatcodes.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CheatcodesReturn {
+    /// Returns the class hash of the declared contract.
     DeclareContract(Felt),
     /// Returns the contract address of the created account.
     CreateAccount(Felt),
@@ -413,10 +432,15 @@ pub enum CheatcodesReturn {
     L1Message(Felt),
     /// Indicates a balance was added.
     TopUpBalance,
+    /// Indicates the address was impersonated.
     Impersonate,
+    /// Indicates the impersonation was stopped.
     StopImpersonating,
+    /// Indicates the storage slot was set.
     SetStorageAt,
+    /// Indicates the next block gas was set returning the gas modification
+    /// values.
     SetNextBlockGas(GasModification),
-
+    /// Returns the address of the deployed contract.
     GetDeployedContractAddress(Felt),
 }

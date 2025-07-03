@@ -1,6 +1,7 @@
 //! The [`middleware`] module provides functionality to interact with
-//! Starknet-like virtual machines. It unites Provider trait and CheatingProvider trait
-//! and adds some covienience methods for working with starknet-rs accounts.
+//! Starknet-like virtual machines. It unites Provider trait and
+//! CheatingProvider trait and adds some covienience methods for working with
+//! starknet-rs accounts.
 //!
 //! Main components:
 //! - [`StarkbiterMiddleware`]: The core middleware implementation.
@@ -11,10 +12,14 @@ pub mod traits;
 mod cheating_provider;
 use std::pin::Pin;
 
-pub use cheating_provider::CheatingProvider;
-
 use async_trait;
+pub use cheating_provider::CheatingProvider;
 use futures::{stream, Stream, StreamExt};
+use starknet::{
+    core::types::{BlockId, Felt},
+    providers::{Provider, ProviderError, ProviderRequestData, ProviderResponseData},
+    signers::{LocalWallet, SigningKey},
+};
 use starknet_accounts::{ExecutionEncoding, SingleOwnerAccount};
 use starknet_devnet_types::{
     num_bigint::BigUint,
@@ -27,15 +32,9 @@ use crate::{
     middleware::traits::Middleware,
     tokens::TokenId,
 };
-use starknet::{
-    core::types::{BlockId, Felt},
-    providers::{Provider, ProviderError, ProviderRequestData, ProviderResponseData},
-    signers::{LocalWallet, SigningKey},
-};
 
 pub mod connection;
 use connection::*;
-
 use starknet_core::types::{self as core_types, EmittedEvent};
 
 /// A middleware structure that integrates with `revm`.
@@ -79,7 +78,7 @@ impl StarkbiterMiddleware {
     pub fn new(
         environment: &Environment,
         seed_and_label: Option<&str>,
-    ) -> Result<Arc<Self>, StarkbiterCoreError> {
+    ) -> Result<Arc<Self>, Box<StarkbiterCoreError>> {
         let connection = Connection::from(environment);
 
         info!(
@@ -92,11 +91,13 @@ impl StarkbiterMiddleware {
         }))
     }
 
-    /// Subscribes to a stream of emitted event vectors. Vectors are produced the moment new
-    /// block is created. Events are filtered and only events of type `T` are returned.
+    /// Subscribes to a stream of emitted event vectors. Vectors are produced
+    /// the moment new block is created. Events are filtered and only events
+    /// of type `T` are returned.
     ///
     /// # Type Parameters
-    /// * `T` - A type that can be constructed from a reference to `EmittedEvent`.
+    /// * `T` - A type that can be constructed from a reference to
+    ///   `EmittedEvent`.
     pub async fn subscribe_to<T>(&self) -> Pin<Box<dyn Stream<Item = Vec<T>> + Send + Sync>>
     where
         T: for<'a> TryFrom<&'a EmittedEvent> + Send + Sync,
@@ -104,17 +105,19 @@ impl StarkbiterMiddleware {
         return self.connection.subscribe_to().await;
     }
 
-    /// Subscribes to a stream of flattened emitted events. similar to `subscribe_to`, but flat.
+    /// Subscribes to a stream of flattened emitted events. similar to
+    /// `subscribe_to`, but flat.
     ///
     /// # Type Parameters
-    /// * `T` - A type that can be constructed from a reference to `EmittedEvent`.
+    /// * `T` - A type that can be constructed from a reference to
+    ///   `EmittedEvent`.
     pub async fn subscribe_to_flatten<T>(&self) -> Pin<Box<dyn Stream<Item = T> + Send + Sync>>
     where
         T: for<'a> TryFrom<&'a EmittedEvent> + Send + Sync + 'static,
     {
         let vector_stream = self.connection.subscribe_to().await;
-        let item_stream = vector_stream.flat_map(|v| stream::iter(v));
-        return Box::pin(item_stream) as Pin<Box<dyn Stream<Item = T> + Send + Sync + 'static>>;
+        let item_stream = vector_stream.flat_map(stream::iter);
+        Box::pin(item_stream) as Pin<Box<dyn Stream<Item = T> + Send + Sync + 'static>>
     }
 }
 
@@ -125,7 +128,7 @@ impl Middleware for StarkbiterMiddleware {
     type Inner = Self;
 
     fn inner(&self) -> &Self::Inner {
-        &self
+        self
     }
 
     fn connection(&self) -> &Connection {
@@ -191,7 +194,7 @@ impl Middleware for StarkbiterMiddleware {
         let account = SingleOwnerAccount::new(
             self.connection().clone(), // TODO: not thread safe
             LocalWallet::from_signing_key(signing_key),
-            address.into(),
+            address,
             chain_id,
             ExecutionEncoding::New,
         );

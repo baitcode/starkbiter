@@ -1,11 +1,12 @@
+use std::num::NonZero;
+
 use cainome::cairo_serde::U256;
-use ethers::etherscan::account;
 use starkbiter_bindings::{
     contracts_router_lite,
     contracts_swapper::{self, SwapData, I129},
     ekubo_core,
     erc_20_mintable_oz0::Erc20MintableOZ0,
-    EKUBO_CORE_CONTRACT_SIERRA, EKUBO_ROUTER_LITE_CONTRACT_SIERRA, SWAPPER_CONTRACT_SIERRA,
+    EKUBO_ROUTER_LITE_CONTRACT_SIERRA, SWAPPER_CONTRACT_SIERRA,
 };
 use starkbiter_core::{
     environment::Environment,
@@ -14,16 +15,13 @@ use starkbiter_core::{
 };
 use starknet::signers::{LocalWallet, SigningKey};
 use starknet_accounts::{Account, SingleOwnerAccount};
-use starknet_devnet_core::constants::{self, ARGENT_CONTRACT_CLASS_HASH};
-use std::num::NonZero;
-use url::Url;
-
 use starknet_core::{
     types::{Call, Felt},
     utils::get_selector_from_name,
 };
-
+use starknet_devnet_core::constants::{self, ARGENT_CONTRACT_CLASS_HASH};
 use starknet_devnet_types::{chain_id::ChainId, rpc::gas_modification::GasModificationRequest};
+use url::Url;
 
 const ALL_GAS_1: GasModificationRequest = GasModificationRequest {
     gas_price_wei: NonZero::new(1_u128),
@@ -43,7 +41,7 @@ const MAINNET_EKUBO_CORE_CONTRACT_ADDRESS: &str =
 
 pub fn setup_log() {
     std::env::set_var("RUST_LOG", "trace");
-    tracing_subscriber::fmt::try_init();
+    let _ = tracing_subscriber::fmt::try_init();
 }
 
 async fn deploy_swapper(
@@ -64,7 +62,7 @@ async fn deploy_swapper(
             Felt::from_hex_unchecked("0x123"),                             // salt
             Felt::ZERO,                                                    // unique
             Felt::TWO,                                                     // constructor length
-            Felt::from_hex_unchecked(MAINNET_EKUBO_CORE_CONTRACT_ADDRESS), // core ekubo contraict address
+            Felt::from_hex_unchecked(MAINNET_EKUBO_CORE_CONTRACT_ADDRESS), /* core ekubo contraict address */
             account.address(),                                             // withdrawal address
         ],
     }];
@@ -96,7 +94,7 @@ async fn deploy_router(
             Felt::from_hex_unchecked("0x123"),                             // salt
             Felt::ZERO,                                                    // unique
             Felt::ONE,                                                     // constructor length
-            Felt::from_hex_unchecked(MAINNET_EKUBO_CORE_CONTRACT_ADDRESS), // core ekubo contraict address
+            Felt::from_hex_unchecked(MAINNET_EKUBO_CORE_CONTRACT_ADDRESS), /* core ekubo contraict address */
         ],
     }];
 
@@ -113,7 +111,7 @@ async fn deploy_router(
 // TODO: optimize tick spacing and trading size for faster trades.
 #[tokio::test]
 async fn test_ekubo_swap_1eth_for_usdc_with_swapper() {
-    setup_log();
+    // setup_log();
 
     let fraction_of_eth = 1_00000000_00000000_00000_u128;
 
@@ -134,7 +132,6 @@ async fn test_ekubo_swap_1eth_for_usdc_with_swapper() {
 
     let client = StarkbiterMiddleware::new(&env, Some("wow")).unwrap();
     client.set_next_block_gas(ALL_GAS_1).await.unwrap();
-    client.create_block().await.unwrap();
 
     let account = client
         .create_single_owner_account(
@@ -202,7 +199,8 @@ async fn test_ekubo_swap_1eth_for_usdc_with_swapper() {
         sqrt_ratio_limit: U256 {
             low: 18446748437148339061,
             high: 0,
-        }, // actually sqrt(token1/token0) so sqrt(3000) would be enough, but I don't want to calculate fp value here
+        }, /* actually sqrt(token1/token0) so sqrt(3000) would be enough, but I don't want to
+            * calculate fp value here */
         amount: I129 {
             mag: fraction_of_eth,
             sign: false,
@@ -298,9 +296,10 @@ async fn test_ekubo_swap_1eth_for_usdc_with_swapper() {
     // Exeute swap
     // Check my balance.
 
-    // let swapper = contracts_swapper::ContractsSwapper::new(swapper_address, &account);
+    // let swapper = contracts_swapper::ContractsSwapper::new(swapper_address,
+    // &account);
 
-    env.stop();
+    let _ = env.stop();
 }
 
 fn to_u256(value: u128) -> U256 {
@@ -312,7 +311,7 @@ fn to_u256(value: u128) -> U256 {
 
 #[tokio::test]
 async fn test_ekubo_swap_1eth_for_usdc_with_router() {
-    setup_log();
+    // setup_log();
 
     let fraction_of_eth = 1_00000000_00000000_00000_u128;
 
@@ -333,7 +332,6 @@ async fn test_ekubo_swap_1eth_for_usdc_with_router() {
 
     let client = StarkbiterMiddleware::new(&env, Some("wow")).unwrap();
     client.set_next_block_gas(ALL_GAS_1).await.unwrap();
-    client.create_block().await.unwrap();
 
     let account = client
         .create_single_owner_account(
@@ -498,5 +496,5 @@ async fn test_ekubo_swap_1eth_for_usdc_with_router() {
         "EKUBO ETH balance should be one increase by 0.1 eth after swap"
     );
 
-    env.stop();
+    let _ = env.stop();
 }

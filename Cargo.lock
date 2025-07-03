@@ -6302,6 +6302,7 @@ dependencies = [
  "starkbiter-core",
  "starkbiter-engine",
  "starkbiter-macros",
+ "starknet",
  "starknet-accounts",
  "starknet-core",
  "starknet-devnet-core",
@@ -6315,6 +6316,7 @@ dependencies = [
  "toml 0.8.22",
  "tracing",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]
@@ -6357,6 +6359,7 @@ dependencies = [
  "starknet-core",
  "starknet-devnet-core",
  "starknet-devnet-types",
+ "starknet-signers",
  "starknet_api",
  "thiserror 1.0.69",
  "tokio",

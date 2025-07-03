@@ -5,7 +5,7 @@
 #![allow(clippy::all)]
 #![allow(warnings)]
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct ContractsUserValues<A: starknet::accounts::ConnectedAccount + Sync> {
@@ -18,9 +18,7 @@ impl<A: starknet::accounts::ConnectedAccount + Sync> ContractsUserValues<A> {
         Self {
             address,
             account,
-            block_id: starknet::core::types::BlockId::Tag(
-                starknet::core::types::BlockTag::Pending,
-            ),
+            block_id: starknet::core::types::BlockId::Tag(starknet::core::types::BlockTag::Pending),
         }
     }
     pub fn set_contract_address(&mut self, address: starknet::core::types::Felt) {
@@ -47,9 +45,7 @@ impl<P: starknet::providers::Provider + Sync> ContractsUserValuesReader<P> {
         Self {
             address,
             provider,
-            block_id: starknet::core::types::BlockId::Tag(
-                starknet::core::types::BlockTag::Pending,
-            ),
+            block_id: starknet::core::types::BlockId::Tag(starknet::core::types::BlockTag::Pending),
         }
     }
     pub fn set_contract_address(&mut self, address: starknet::core::types::Felt) {
@@ -89,25 +85,25 @@ impl cainome::cairo_serde::CairoSerde for Event {
         let __index = u128::from_be_bytes(__f.to_bytes_be()[16..].try_into().unwrap());
         match __index as usize {
             _ => {
-                return Err(
-                    cainome::cairo_serde::Error::Deserialize(
-                        format!("Index not handle for enum {}", "Event"),
-                    ),
-                );
+                return Err(cainome::cairo_serde::Error::Deserialize(format!(
+                    "Index not handle for enum {}",
+                    "Event"
+                )));
             }
         }
     }
 }
 impl TryFrom<&starknet::core::types::EmittedEvent> for Event {
     type Error = String;
-    fn try_from(
-        event: &starknet::core::types::EmittedEvent,
-    ) -> Result<Self, Self::Error> {
+    fn try_from(event: &starknet::core::types::EmittedEvent) -> Result<Self, Self::Error> {
         use cainome::cairo_serde::CairoSerde;
         if event.keys.is_empty() {
             return Err("Event has no key".to_string());
         }
-        Err(format!("Could not match any event from keys {:?}", event.keys))
+        Err(format!(
+            "Could not match any event from keys {:?}",
+            event.keys
+        ))
     }
 }
 impl TryFrom<&starknet::core::types::Event> for Event {
@@ -117,7 +113,10 @@ impl TryFrom<&starknet::core::types::Event> for Event {
         if event.keys.is_empty() {
             return Err("Event has no key".to_string());
         }
-        Err(format!("Could not match any event from keys {:?}", event.keys))
+        Err(format!(
+            "Could not match any event from keys {:?}",
+            event.keys
+        ))
     }
 }
 impl<A: starknet::accounts::ConnectedAccount + Sync> ContractsUserValues<A> {
@@ -129,8 +128,9 @@ impl<A: starknet::accounts::ConnectedAccount + Sync> ContractsUserValues<A> {
     ) -> cainome::cairo_serde::call::FCall<A::Provider, u64> {
         use cainome::cairo_serde::CairoSerde;
         let mut __calldata = vec![];
-        __calldata
-            .extend(cainome::cairo_serde::ContractAddress::cairo_serialize(address));
+        __calldata.extend(cainome::cairo_serde::ContractAddress::cairo_serialize(
+            address,
+        ));
         let __call = starknet::core::types::FunctionCall {
             contract_address: self.address,
             entry_point_selector: starknet::macros::selector!("get"),
@@ -173,8 +173,9 @@ impl<P: starknet::providers::Provider + Sync> ContractsUserValuesReader<P> {
     ) -> cainome::cairo_serde::call::FCall<P, u64> {
         use cainome::cairo_serde::CairoSerde;
         let mut __calldata = vec![];
-        __calldata
-            .extend(cainome::cairo_serde::ContractAddress::cairo_serialize(address));
+        __calldata.extend(cainome::cairo_serde::ContractAddress::cairo_serialize(
+            address,
+        ));
         let __call = starknet::core::types::FunctionCall {
             contract_address: self.address,
             entry_point_selector: starknet::macros::selector!("get"),

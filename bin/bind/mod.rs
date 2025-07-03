@@ -2,14 +2,14 @@
 use std::{fs, path::PathBuf};
 
 mod digest;
-use self::digest::StarkbiterConfig;
 use cainome::rs::Abigen;
 use inflector::Inflector;
 
 /// Uses cainome from cartridge to generate bindings.
 ///
-/// This function takes one directory as a source path and other as a destination path.
-/// Searches source files for JSON files and generates Rust bindings for each one of them.
+/// This function takes one directory as a source path and other as a
+/// destination path. Searches source files for JSON files and generates Rust
+/// bindings for each one of them.
 ///
 /// # Returns
 ///
@@ -17,12 +17,7 @@ use inflector::Inflector;
 /// * `Err(std::io::Error)` if the command execution fails or if there's an
 ///   error in generating the bindings. This can also include if the `forge`
 ///   tool is not installed.
-
 pub(crate) fn cainome_bind(src: &str, dest: &str, use_debug: &bool) -> std::io::Result<()> {
-    let arbiter_config = StarkbiterConfig::new().unwrap_or_default();
-    // TODO: ???
-    // let project_bidnings_output_path = arbiter_config.bindings_path;
-
     let derives = if *use_debug {
         vec!["Debug", "PartialEq"]
     } else {
@@ -82,7 +77,7 @@ pub(crate) fn cainome_bind(src: &str, dest: &str, use_debug: &bool) -> std::io::
             if !src_file_path.is_file() {
                 continue;
             }
-            if !src_file_path.extension().map_or(false, |ext| ext == "json") {
+            if src_file_path.extension().is_none_or(|ext| ext != "json") {
                 continue;
             }
 

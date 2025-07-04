@@ -5,15 +5,15 @@
 //! TokenId TokenId is exported as well. This is intended to be used with forked
 //! Starknet Devnet Mainnet and Sepolia networks.
 
-use anyhow::{anyhow, Result};
-use serde::{Deserialize, Serialize};
-use starknet_core::types::Felt;
-use starknet_devnet_types::chain_id::ChainId;
-
 use std::{
     collections::HashMap,
     sync::{Mutex, OnceLock},
 };
+
+use anyhow::{anyhow, Result};
+use serde::{Deserialize, Serialize};
+use starknet_core::types::Felt;
+use starknet_devnet_types::chain_id::ChainId;
 
 static MAINNET_JSON: &str = include_str!("./assets/mainnet.json");
 static SEPOLIA_JSON: &str = include_str!("./assets/sepolia.json");

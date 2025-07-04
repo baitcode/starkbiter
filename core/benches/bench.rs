@@ -12,7 +12,7 @@ use starkbiter_core::{
     environment::Environment,
     middleware::{traits::Middleware, StarkbiterMiddleware},
 };
-use starknet_accounts::{Account, ConnectedAccount};
+use starknet_accounts::ConnectedAccount;
 use starknet_core::{
     types::{Call, Felt},
     utils::get_selector_from_name,
@@ -113,7 +113,7 @@ async fn bencher(client: Arc<StarkbiterMiddleware>, label: &str) -> BenchDuratio
     // Track the duration for each part of the benchmark.
     let mut total_deploy_duration = 0;
     let mut total_lookup_duration = 0;
-    let mut total_stateless_call_duration = 0;
+    let total_stateless_call_duration = 0;
     let mut total_stateful_call_duration = 0;
 
     // Deploy `ArbiterMath` and `ArbiterToken` contracts and tally up how long this

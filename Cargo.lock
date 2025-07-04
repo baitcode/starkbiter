@@ -5077,14 +5077,16 @@ version = "0.1.0"
 dependencies = [
  "futures",
  "num-bigint",
+ "proc-macro2",
  "pyo3",
  "pyo3-asyncio",
  "starkbiter-bindings",
  "starkbiter-core",
- "starkbiter-engine",
  "starknet",
  "starknet-accounts",
  "starknet-core",
+ "starknet-devnet-core",
+ "starknet-devnet-types",
  "starknet-signers",
  "tokio",
  "tracing",
@@ -6273,6 +6275,7 @@ dependencies = [
 name = "starkbiter-macros"
 version = "0.1.4"
 dependencies = [
+ "proc-macro2",
  "quote",
  "syn 2.0.101",
 ]

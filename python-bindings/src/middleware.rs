@@ -1,18 +1,20 @@
+#![allow(non_local_definitions)]
 use std::{
     collections::HashMap,
+    num::NonZeroU128,
     sync::{Arc, OnceLock},
 };
 
 use futures::{stream::Peekable, Stream, StreamExt};
 use num_bigint::BigInt;
 use pyo3::prelude::*;
-
 use starkbiter_core::{
     middleware::{connection::Connection, traits::Middleware, StarkbiterMiddleware},
     tokens::TokenId,
 };
 use starknet_accounts::{Account, SingleOwnerAccount};
 use starknet_core::types::{self};
+use starknet_devnet_types::rpc::gas_modification::GasModificationRequest;
 use starknet_signers::{LocalWallet, SigningKey};
 use tokio::sync::Mutex;
 
@@ -29,17 +31,11 @@ fn accounts() -> &'static Mutex<HashMap<String, SingleOwnerAccount<Connection, L
     ACCOUNTS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-static SUBSCRIPTIONS: OnceLock<
-    Mutex<
-        HashMap<
-            String,
-            Mutex<Peekable<std::pin::Pin<Box<dyn Stream<Item = Event> + Send + Sync>>>>,
-        >,
-    >,
-> = OnceLock::new();
-fn subscriptions() -> &'static Mutex<
-    HashMap<String, Mutex<Peekable<std::pin::Pin<Box<dyn Stream<Item = Event> + Send + Sync>>>>>,
-> {
+type Subscription = Peekable<std::pin::Pin<Box<dyn Stream<Item = Event> + Send + Sync>>>;
+type SubscriptionStore = HashMap<String, Mutex<Subscription>>;
+
+static SUBSCRIPTIONS: OnceLock<Mutex<SubscriptionStore>> = OnceLock::new();
+fn subscriptions() -> &'static Mutex<SubscriptionStore> {
     SUBSCRIPTIONS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -54,6 +50,7 @@ pub struct BlockId {
     pub tag: Option<String>,
 }
 
+#[allow(non_local_definitions)]
 #[pymethods]
 impl BlockId {
     #[staticmethod]
@@ -140,7 +137,7 @@ pub fn create_middleware<'p>(py: Python<'p>, environment_id: &str) -> PyResult<&
         let mut middlewares_lock = middlewares().lock().await;
         middlewares_lock.insert(random_id.to_string(), middleware);
 
-        return Ok(random_id);
+        Ok(random_id)
     })
 }
 
@@ -223,7 +220,7 @@ pub fn create_account<'p>(
 
         accounts_lock.insert(address.clone(), account);
 
-        return Ok(address);
+        Ok(address)
     })
 }
 
@@ -238,6 +235,7 @@ pub struct Call {
     pub calldata: Vec<BigInt>,
 }
 
+#[allow(non_local_definitions)]
 #[pymethods]
 impl Call {
     #[new]
@@ -268,11 +266,7 @@ impl TryFrom<Call> for types::FunctionCall {
             ))
         })?;
 
-        let calldata = value
-            .calldata
-            .iter()
-            .map(|v| types::Felt::from(v))
-            .collect();
+        let calldata = value.calldata.iter().map(types::Felt::from).collect();
 
         Ok(types::FunctionCall {
             contract_address: to,
@@ -305,7 +299,7 @@ pub fn account_execute<'p>(py: Python<'p>, address: &str, calls: Vec<Call>) -> P
             .map(|c| starknet_core::types::Call {
                 to: types::Felt::from_hex_unchecked(&c.to),
                 selector: types::Felt::from_hex_unchecked(&c.selector),
-                calldata: c.calldata.iter().map(|v| types::Felt::from(v)).collect(),
+                calldata: c.calldata.iter().map(types::Felt::from).collect(),
             })
             .collect();
 
@@ -316,7 +310,7 @@ pub fn account_execute<'p>(py: Python<'p>, address: &str, calls: Vec<Call>) -> P
             ))
         })?;
 
-        return Ok(result.transaction_hash.to_hex_string());
+        Ok(result.transaction_hash.to_hex_string())
     })
 }
 
@@ -366,7 +360,7 @@ pub fn top_up_balance<'p>(
                 PyErr::new::<crate::ProviderError, _>(format!("Failed to top up balance: {}", e))
             })?;
 
-        return Ok(());
+        Ok(())
     })
 }
 
@@ -424,7 +418,7 @@ pub fn set_storage<'p>(
                 PyErr::new::<crate::ProviderError, _>(format!("Failed to set storage: {}", e))
             })?;
 
-        return Ok(());
+        Ok(())
     })
 }
 
@@ -478,7 +472,7 @@ pub fn get_storage<'p>(
                 PyErr::new::<crate::ProviderError, _>(format!("Failed to get storage: {}", e))
             })?;
 
-        return Ok(data.to_hex_string());
+        Ok(data.to_hex_string())
     })
 }
 
@@ -517,7 +511,7 @@ pub fn call<'p>(
         })?;
 
         let result: Vec<_> = data.iter().map(|i| i.to_hex_string()).collect();
-        return Ok(result);
+        Ok(result)
     })
 }
 
@@ -550,7 +544,7 @@ pub fn impersonate<'p>(py: Python<'p>, middleware_id: &str, address: &str) -> Py
             PyErr::new::<crate::ProviderError, _>(format!("Failed to start impersonation: {}", e))
         })?;
 
-        return Ok(());
+        Ok(())
     })
 }
 
@@ -593,7 +587,54 @@ pub fn stop_impersonate<'p>(
                 ))
             })?;
 
-        return Ok(());
+        Ok(())
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+#[pyfunction]
+pub fn set_gas_price<'p>(
+    py: Python<'p>,
+    middleware_id: &str,
+    gas_price_wei: Option<NonZeroU128>,
+    gas_price_fri: Option<NonZeroU128>,
+    data_gas_price_wei: Option<NonZeroU128>,
+    data_gas_price_fri: Option<NonZeroU128>,
+    l2_gas_price_wei: Option<NonZeroU128>,
+    l2_gas_price_fri: Option<NonZeroU128>,
+    generate_block: Option<bool>,
+) -> PyResult<&'p PyAny> {
+    let middleware_id_local = middleware_id.to_string();
+
+    pyo3_asyncio::tokio::future_into_py::<_, _>(py, async move {
+        let middlewares_lock = middlewares().lock().await;
+        let maybe_middleware = middlewares_lock.get(&middleware_id_local);
+
+        if maybe_middleware.is_none() {
+            return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                "Middleware not found for: {:?}",
+                &middleware_id_local
+            )));
+        }
+
+        let middleware = maybe_middleware.unwrap();
+
+        middleware
+            .set_next_block_gas(GasModificationRequest {
+                gas_price_wei,
+                gas_price_fri,
+                data_gas_price_wei,
+                data_gas_price_fri,
+                l2_gas_price_wei,
+                l2_gas_price_fri,
+                generate_block,
+            })
+            .await
+            .map_err(|e| {
+                PyErr::new::<crate::ProviderError, _>(format!("Failed to set gas price: {}", e))
+            })?;
+
+        Ok(())
     })
 }
 
@@ -658,16 +699,12 @@ pub fn create_subscription<'p>(py: Python<'p>, middleware_id: &str) -> PyResult<
 
         subscriptions_lock.insert(random_id.clone(), Mutex::new(subscription.peekable()));
 
-        return Ok(random_id);
+        Ok(random_id)
     })
 }
 
 #[pyfunction]
-pub fn poll_subscription<'p>(
-    py: Python<'p>,
-    subscription_id: &str,
-    n: usize,
-) -> PyResult<&'p PyAny> {
+pub fn poll_subscription<'p>(py: Python<'p>, subscription_id: &str) -> PyResult<&'p PyAny> {
     let subscription_id_local = subscription_id.to_string();
 
     pyo3_asyncio::tokio::future_into_py::<_, _>(py, async move {
@@ -684,13 +721,13 @@ pub fn poll_subscription<'p>(
         let subscription_lock = maybe_subscription.unwrap();
         let mut subscription = subscription_lock.lock().await;
 
-        let z = subscription.next().await; // Advance the stream to the next event
-        if z.is_none() {
+        let maybe_next = subscription.next().await; // Advance the stream to the next event
+        if maybe_next.is_none() {
             return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
                 "No events available in the subscription",
             ));
         }
 
-        return Ok(z.unwrap());
+        Ok(maybe_next.unwrap())
     })
 }

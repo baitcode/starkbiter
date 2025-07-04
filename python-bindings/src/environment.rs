@@ -1,7 +1,7 @@
+#![allow(non_local_definitions)]
 use std::{collections::HashMap, sync::OnceLock};
 
 use pyo3::prelude::*;
-
 use starkbiter_core::environment;
 use starknet::providers::Url;
 use starknet_core::types::Felt;
@@ -38,7 +38,7 @@ impl ForkParams {
 #[pyfunction]
 pub fn set_tracing() {
     std::env::set_var("RUST_LOG", "trace");
-    tracing_subscriber::fmt::try_init();
+    let _ = tracing_subscriber::fmt::try_init();
 }
 
 #[pyfunction]

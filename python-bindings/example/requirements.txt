@@ -1,2 +1,0 @@
-maturin
-git+https://github.com/NethermindEth/starknet-abi.git

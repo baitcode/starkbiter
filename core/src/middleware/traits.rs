@@ -13,7 +13,7 @@ use starknet::{
     signers::{LocalWallet, SigningKey},
 };
 use starknet_accounts::SingleOwnerAccount;
-use starknet_core::types::{self as core_types};
+use starknet_core::types::{self as core_types, L1HandlerTransaction};
 use starknet_devnet_types::num_bigint::BigUint;
 
 use super::*;
@@ -85,6 +85,18 @@ pub trait Middleware {
         S: Into<String> + Send + Sync,
     {
         self.inner().declare_contract(sierra_json).await
+    }
+
+    /// Creates a mocked single owner account without actually creating an
+    /// account, such an account needed to impersonate owner.
+    async fn create_mocked_account<F>(
+        &self,
+        address: F,
+    ) -> Result<SingleOwnerAccount<Connection, LocalWallet>, ProviderError>
+    where
+        F: Into<Felt> + Send + Sync,
+    {
+        self.inner().create_mocked_account(address).await
     }
 
     /// Creates a single owner account with the given signing key,
@@ -181,7 +193,7 @@ pub trait Middleware {
             .await
     }
 
-    /// Returns block with full transaction data.
+    /// Returns block with full transaction data. Looks up only internal state.
     async fn get_block_with_txs<B>(
         &self,
         block_id: B,
@@ -190,6 +202,17 @@ pub trait Middleware {
         B: AsRef<BlockId> + Send + Sync,
     {
         self.inner().get_block_with_txs(block_id).await
+    }
+
+    /// Returns block with full transaction data. Looks up only fork.
+    async fn get_block_with_txs_from_fork<B>(
+        &self,
+        block_id: B,
+    ) -> Result<core_types::MaybePendingBlockWithTxs, ProviderError>
+    where
+        B: AsRef<BlockId> + Send + Sync,
+    {
+        self.inner().get_block_with_txs_from_fork(block_id).await
     }
 
     /// Returns block with transaction receipts only.
@@ -536,5 +559,30 @@ pub trait Middleware {
         R: AsRef<[ProviderRequestData]> + Send + Sync,
     {
         self.inner().batch_requests(requests).await
+    }
+
+    /// Adds a L1 handler transaction to blockchain.
+    async fn add_l1_handler_transaction<T>(&self, tx: T) -> Result<Felt, ProviderError>
+    where
+        T: Into<L1HandlerTransaction> + Send + Sync,
+    {
+        self.inner().add_l1_handler_transaction(tx).await
+    }
+
+    /// Gets block information from original forked blockchain and replays
+    /// against pending block of the local version.
+    async fn replay_block_with_txs<B, F>(
+        &self,
+        block_id: B,
+        filters: F,
+        override_nonce: bool,
+    ) -> Result<(usize, usize, usize), ProviderError>
+    where
+        B: AsRef<BlockId> + Send + Sync,
+        F: Into<Option<Vec<EventFilter>>> + Send + Sync,
+    {
+        self.inner()
+            .replay_block_with_txs(block_id, filters, override_nonce)
+            .await
     }
 }

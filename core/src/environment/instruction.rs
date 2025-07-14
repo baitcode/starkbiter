@@ -17,6 +17,18 @@ use starknet_devnet_types::{
 use super::*;
 use crate::tokens::TokenId;
 
+/// Filter to pass to replay block method so that only transactions containing
+/// certain events would be applied. This is merely an optimisation, as block
+/// replay with 200 tx would take 20 mins.
+#[derive(Debug, Clone)]
+pub struct EventFilter {
+    /// Matched events emitted by this address
+    pub from_address: Felt,
+    /// Matches events with those keys: [selector, key1, key2]
+    /// selector is a keccak hash from event name.
+    pub keys: Vec<Felt>,
+}
+
 /// Instructions that can be sent to the [`Environment`] via the [`Socket`].
 ///
 /// These instructions are sent to the [`Environment`] via the
@@ -313,7 +325,7 @@ pub enum Outcome {
     /// Node-related outcome.
     Node(NodeOutcome),
     /// Cheatcode-related outcome.
-    Cheat(CheatcodesReturn),
+    Cheat(CheatcodesOutcome),
     /// System-related outcome.
     System(SystemInstructionOutcome),
 }
@@ -417,18 +429,36 @@ pub enum CheatInstruction {
         /// The transaction hash of the deployment.
         tx_hash: Felt,
     },
+
+    /// Gets a block with transactions by its identifier
+    /// from the forked blockchain.
+    GetBlockWithTxs {
+        /// The identifier of the block to retrieve.
+        block_id: core_types::BlockId,
+    },
+    /// Fetches block with transactions by its identifier
+    /// and adds them on top of pending block in DevNet.
+    ReplayBlockWithTxs {
+        /// The identifier of the block to retrieve.
+        block_id: core_types::BlockId,
+        /// Checks if transaction has events matching filters and applies it if
+        /// so, otherwise ignores.
+        has_events: Option<Vec<EventFilter>>,
+        /// Set to true to recalculate the nonce for the transactions
+        override_nonce: bool,
+    },
 }
 
 /// Return values of applying cheatcodes.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum CheatcodesReturn {
+pub enum CheatcodesOutcome {
     /// Returns the class hash of the declared contract.
     DeclareContract(Felt),
     /// Returns the contract address of the created account.
     CreateAccount(Felt),
     /// Indicates a block was created.
     CreateBlock,
-    /// Returns the result of sending an L1 message.
+    /// Returns the tx_hash of L1 message transaction.
     L1Message(Felt),
     /// Indicates a balance was added.
     TopUpBalance,
@@ -443,4 +473,9 @@ pub enum CheatcodesReturn {
     SetNextBlockGas(GasModification),
     /// Returns the address of the deployed contract.
     GetDeployedContractAddress(Felt),
+    /// Returns block with transactions.
+    GetBlockWithTxs(Box<core_types::MaybePendingBlockWithTxs>),
+    /// Returns numbers of transactions from the origin block that were (added,
+    /// ignored, failed)
+    ReplayBlockWithTxs(usize, usize, usize),
 }

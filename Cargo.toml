@@ -1,6 +1,6 @@
 [workspace]
 # List of crates included in this workspace
-members = ["core", "bindings", "macros", "engine"]
+members = ["core", "bindings", "macros", "engine", "python-bindings"]
 
 # List of crates excluded from this workspace
 exclude = ["benches", "docs"]
@@ -41,7 +41,8 @@ starkbiter-core = { path = "core" }
 starkbiter-engine = { path = "engine" }
 starkbiter-macros = { path = "macros" }
 
-# starknet-devnet-core = { path = "/Users/baitcode/work/starknet/starknet-devnet/crates/starknet-devnet-core" }
+uuid = { version = "=1.17.0", features = ["v4"] }
+
 starknet-devnet-core = { git = "https://github.com/baitcode/starknet-devnet.git", branch = "experiment" }
 starknet-devnet-types = { git = "https://github.com/baitcode/starknet-devnet.git", branch = "experiment" }
 starknet_api = "=0.14.0-rc.3"
@@ -106,6 +107,9 @@ config = { version = "=0.14.0" }
 toml.workspace = true
 Inflector = { version = "=0.11.4" }
 
+# Building files
+# foundry-config = { version = "=0.2.0" }
+# tempfile = { version = "3.10.1" }
 
 # Errors
 thiserror.workspace = true
@@ -138,3 +142,6 @@ lto = true
 # The Rust compiler splits your crate into multiple codegen units to parallelize (and thus speed up) compilation but at the cost of optimization.
 # This setting tells the compiler to use only one codegen unit, which will slow down compilation but improve optimization.
 codegen-units = 1
+
+[workspace.metadata.cargo-machete]
+ignored = ["proc-macro2"]

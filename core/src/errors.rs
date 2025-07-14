@@ -17,8 +17,12 @@ pub enum StarkbiterCoreError {
     #[error("Account already exists!")]
     AccountCreationError,
 
+    /// Tried to fetch data from underlying fork.
+    #[error("No forking config exists!")]
+    NoForkConfig,
+
     /// Failed to calculate the account address.
-    #[error("Cant calculate account address!")]
+    #[error("Can't calculate account address!")]
     AccountAddressError,
 
     /// Tried to access an account that doesn't exist.

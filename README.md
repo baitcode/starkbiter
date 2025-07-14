@@ -30,22 +30,27 @@ The Starkbiter workspace has five crates:
 
 ## WIP
 
+- [ ] non-blocking event polling
 - [x] bin docs
 - [x] core docs
 - [x] main readme
 - [ ] docs docs
+    - [x] getting started
+    - [ ] usage
+    - [x] index
 - [ ] benchmarks
 - [ ] python bindings
-- [ ] more test cases, more granular, coverage report
-- [ ] support for replaying mainnet transactions mixing them with simulated ones.
-- [ ] event persistence
-- [ ] github workflows revival
+- [x] more test cases
+- [ ] coverage report
+- [x] support for replaying mainnet transactions mixing them with simulated ones.
+- [x] github workflows revival
 - [ ] contribute to cainome and remove fork dep
 - [ ] contribute to starknet-rs and remove fork dep + Fix generic Runtime error with more specific errors from within Provider
 - [ ] contribute to starknet-devnet and remove fork dep
+- [x] test that toml config parameters for forking work
+- [x] contract execution logging and traces from Devnet
 - [ ] test for simultaneous connection usage by different contracts.
-- [ ] test that toml config parameters for forking work
-- [ ] contract execution logging and traces from Devnet
+
 
 ## Book
 TODO: Does not exist yet

@@ -43,6 +43,22 @@ impl From<&TokenId> for String {
     }
 }
 
+impl TryFrom<&str> for TokenId {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
+        match value {
+            "strk" => Ok(TokenId::STRK),
+            "eth" => Ok(TokenId::ETH),
+            "usdc" => Ok(TokenId::USDC),
+            "usdt" => Ok(TokenId::USDT),
+            "dai" => Ok(TokenId::DAI),
+            "ekubo" => Ok(TokenId::EKUBO),
+            _ => Err(anyhow!("Unsupported token identifier: {}", value)),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 struct SerialisedTokenData {
     id: Option<String>,
@@ -146,8 +162,8 @@ impl BridgedTokenDataStorage {
     }
 }
 
+static INSTANCE: OnceLock<Mutex<BridgedTokenDataStorage>> = OnceLock::new();
 fn cache() -> &'static Mutex<BridgedTokenDataStorage> {
-    static INSTANCE: OnceLock<Mutex<BridgedTokenDataStorage>> = OnceLock::new();
     INSTANCE.get_or_init(|| Mutex::new(BridgedTokenDataStorage::new()))
 }
 

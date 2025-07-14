@@ -1,13 +1,13 @@
 use async_trait::async_trait;
 use auto_impl::auto_impl;
 use starknet::{providers::ProviderError, signers::SigningKey};
-use starknet_core::types::Felt;
+use starknet_core::types::{BlockId, Felt, L1HandlerTransaction, MaybePendingBlockWithTxs};
 use starknet_devnet_types::{
     num_bigint::BigUint,
     rpc::gas_modification::{GasModification, GasModificationRequest},
 };
 
-use crate::tokens::TokenId;
+use crate::{environment::instruction::EventFilter, tokens::TokenId};
 
 /// A trait for providing cheating functionalities such as creating accounts,
 /// topping up balances, and impersonating accounts.
@@ -87,4 +87,30 @@ pub trait CheatingProvider {
     async fn get_deployed_contract_address<F>(&self, tx_hash: F) -> Result<Felt, ProviderError>
     where
         F: Into<Felt> + Send + Sync;
+
+    /// Gets block information with full transactions and receipts given the
+    /// block id. Looks up the underlying fork.
+    async fn get_block_with_txs_from_fork<B>(
+        &self,
+        block_id: B,
+    ) -> Result<MaybePendingBlockWithTxs, ProviderError>
+    where
+        B: AsRef<BlockId> + Send + Sync;
+
+    /// Adds a L1 handler transaction to blockchain.
+    async fn add_l1_handler_transaction<T>(&self, tx: T) -> Result<Felt, ProviderError>
+    where
+        T: Into<L1HandlerTransaction> + Send + Sync;
+
+    /// Gets block information from original forked blockchain and replays
+    /// against pending block of the local version.
+    async fn replay_block_with_txs<B, F>(
+        &self,
+        block_id: B,
+        filters: F,
+        override_nonce: bool,
+    ) -> Result<(usize, usize, usize), ProviderError>
+    where
+        B: AsRef<BlockId> + Send + Sync,
+        F: Into<Option<Vec<EventFilter>>> + Send + Sync;
 }

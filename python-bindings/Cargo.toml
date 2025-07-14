@@ -1,0 +1,33 @@
+[package]
+name = "python-bindings"
+version = "0.1.5"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "starkbiter_bindings"
+crate-type = ["cdylib"]
+
+[dependencies]
+num-bigint = "=0.4.6"
+pyo3 = { version = "^0.20", features = ["num-bigint"] }
+pyo3-asyncio = { version = "=0.20", features = ["attributes", "tokio-runtime"] }
+tracing-subscriber = "0.3.18"
+
+proc-macro2.workspace = true
+
+tracing.workspace = true
+futures.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+
+starkbiter-bindings.workspace = true
+starkbiter-core.workspace = true
+
+starknet.workspace = true
+starknet-core.workspace = true
+starknet-accounts.workspace = true
+starknet-signers.workspace = true
+
+starknet-devnet-core.workspace = true
+starknet-devnet-types.workspace = true

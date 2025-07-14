@@ -4,13 +4,13 @@ use std::{pin::Pin, sync::Weak};
 use async_trait;
 use futures::Stream;
 use starknet::providers::{Provider, ProviderError};
-use starknet_core::types::{self as core_types, EventFilter};
+use starknet_core::types::{self as core_types};
 use starknet_devnet_types::num_bigint::BigUint;
 use tokio::sync::broadcast;
 
 use super::*;
 use crate::{
-    environment::{InstructionSender, OutcomeReceiver, OutcomeSender},
+    environment::{instruction::*, InstructionSender, OutcomeReceiver, OutcomeSender},
     tokens::TokenId,
 };
 
@@ -84,7 +84,7 @@ impl Connection {
     where
         T: for<'a> TryFrom<&'a EmittedEvent> + Send + Sync,
     {
-        let rx = self.event_sender.subscribe();
+        let rx: broadcast::Receiver<Vec<EmittedEvent>> = self.event_sender.subscribe();
 
         let stream = futures::stream::unfold(rx, |mut rx| async {
             loop {
@@ -125,7 +125,7 @@ impl CheatingProvider for Connection {
 
         let res = self.send_instruction_recv_outcome(to_send).await?;
 
-        if let Outcome::Cheat(CheatcodesReturn::GetDeployedContractAddress(address)) = res {
+        if let Outcome::Cheat(CheatcodesOutcome::GetDeployedContractAddress(address)) = res {
             Ok(address)
         } else {
             Err(ProviderError::RateLimited)
@@ -137,7 +137,7 @@ impl CheatingProvider for Connection {
 
         let res = self.send_instruction_recv_outcome(to_send).await?;
 
-        if let Outcome::Cheat(CheatcodesReturn::CreateBlock) = res {
+        if let Outcome::Cheat(CheatcodesOutcome::CreateBlock) = res {
             Ok(())
         } else {
             Err(ProviderError::RateLimited)
@@ -163,7 +163,7 @@ impl CheatingProvider for Connection {
 
         let res = self.send_instruction_recv_outcome(to_send).await?;
 
-        if let Outcome::Cheat(CheatcodesReturn::CreateAccount(address)) = res {
+        if let Outcome::Cheat(CheatcodesOutcome::CreateAccount(address)) = res {
             Ok(address)
         } else {
             Err(ProviderError::RateLimited)
@@ -189,7 +189,7 @@ impl CheatingProvider for Connection {
 
         let res = self.send_instruction_recv_outcome(to_send).await?;
 
-        if let Outcome::Cheat(CheatcodesReturn::TopUpBalance) = res {
+        if let Outcome::Cheat(CheatcodesOutcome::TopUpBalance) = res {
             Ok(())
         } else {
             Err(ProviderError::RateLimited)
@@ -206,7 +206,7 @@ impl CheatingProvider for Connection {
 
         let res = self.send_instruction_recv_outcome(to_send).await?;
 
-        if let Outcome::Cheat(CheatcodesReturn::Impersonate) = res {
+        if let Outcome::Cheat(CheatcodesOutcome::Impersonate) = res {
             Ok(())
         } else {
             Err(ProviderError::RateLimited)
@@ -223,7 +223,7 @@ impl CheatingProvider for Connection {
 
         let res = self.send_instruction_recv_outcome(to_send).await?;
 
-        if let Outcome::Cheat(CheatcodesReturn::StopImpersonating) = res {
+        if let Outcome::Cheat(CheatcodesOutcome::StopImpersonating) = res {
             Ok(())
         } else {
             Err(ProviderError::RateLimited)
@@ -249,7 +249,7 @@ impl CheatingProvider for Connection {
 
         let res = self.send_instruction_recv_outcome(to_send).await?;
 
-        if let Outcome::Cheat(CheatcodesReturn::SetStorageAt) = res {
+        if let Outcome::Cheat(CheatcodesOutcome::SetStorageAt) = res {
             Ok(())
         } else {
             Err(ProviderError::RateLimited)
@@ -266,7 +266,7 @@ impl CheatingProvider for Connection {
 
         let res = self.send_instruction_recv_outcome(to_send).await?;
 
-        if let Outcome::Cheat(CheatcodesReturn::DeclareContract(class_hash)) = res {
+        if let Outcome::Cheat(CheatcodesOutcome::DeclareContract(class_hash)) = res {
             Ok(class_hash)
         } else {
             Err(ProviderError::RateLimited)
@@ -286,8 +286,73 @@ impl CheatingProvider for Connection {
 
         let res = self.send_instruction_recv_outcome(to_send).await?;
 
-        if let Outcome::Cheat(CheatcodesReturn::SetNextBlockGas(gas)) = res {
+        if let Outcome::Cheat(CheatcodesOutcome::SetNextBlockGas(gas)) = res {
             Ok(gas)
+        } else {
+            Err(ProviderError::RateLimited)
+        }
+    }
+
+    async fn get_block_with_txs_from_fork<B>(
+        &self,
+        block_id: B,
+    ) -> Result<core_types::MaybePendingBlockWithTxs, ProviderError>
+    where
+        B: AsRef<BlockId> + Send + Sync,
+    {
+        let to_send = Instruction::Cheat(CheatInstruction::GetBlockWithTxs {
+            block_id: *block_id.as_ref(),
+        });
+
+        let res = self.send_instruction_recv_outcome(to_send).await?;
+
+        if let Outcome::Cheat(CheatcodesOutcome::GetBlockWithTxs(res)) = res {
+            Ok(*res)
+        } else {
+            Err(ProviderError::RateLimited)
+        }
+    }
+
+    async fn add_l1_handler_transaction<T>(&self, tx: T) -> Result<Felt, ProviderError>
+    where
+        T: Into<core_types::L1HandlerTransaction> + Send + Sync,
+    {
+        let handler: &core_types::L1HandlerTransaction = &tx.into();
+
+        // TODO(baitcode): Hmmm to many conversions here, need to rethink this
+        let to_send = Instruction::Cheat(CheatInstruction::L1Message {
+            l1_handler_transaction: handler.into(),
+        });
+
+        let res = self.send_instruction_recv_outcome(to_send).await?;
+
+        if let Outcome::Cheat(CheatcodesOutcome::L1Message(tx_hash)) = res {
+            Ok(tx_hash)
+        } else {
+            Err(ProviderError::RateLimited)
+        }
+    }
+
+    async fn replay_block_with_txs<B, F>(
+        &self,
+        block_id: B,
+        filters: F,
+        override_nonce: bool,
+    ) -> Result<(usize, usize, usize), ProviderError>
+    where
+        B: AsRef<BlockId> + Send + Sync,
+        F: Into<Option<Vec<EventFilter>>> + Send + Sync,
+    {
+        let to_send = Instruction::Cheat(CheatInstruction::ReplayBlockWithTxs {
+            block_id: *block_id.as_ref(),
+            has_events: filters.into(),
+            override_nonce,
+        });
+
+        let res = self.send_instruction_recv_outcome(to_send).await?;
+
+        if let Outcome::Cheat(CheatcodesOutcome::ReplayBlockWithTxs(added, ignored, failed)) = res {
+            Ok((added, ignored, failed))
         } else {
             Err(ProviderError::RateLimited)
         }
@@ -729,7 +794,7 @@ impl Provider for Connection {
     }
 
     /// Returns an object about the sync status, or false if the node is not
-    /// synching.
+    /// syncing.
     async fn syncing(&self) -> Result<core_types::SyncStatusType, ProviderError> {
         let to_send = Instruction::Node(NodeInstruction::Syncing);
 
@@ -745,12 +810,12 @@ impl Provider for Connection {
     /// Returns all events matching the given filter.
     async fn get_events(
         &self,
-        filter: EventFilter,
+        filter: core_types::EventFilter,
         continuation_token: Option<String>,
         chunk_size: u64,
     ) -> Result<core_types::EventsPage, ProviderError> {
         let to_send = Instruction::Node(NodeInstruction::GetEvents {
-            filter: EventFilter {
+            filter: core_types::EventFilter {
                 from_block: filter.from_block,
                 to_block: filter.to_block,
                 address: filter.address,

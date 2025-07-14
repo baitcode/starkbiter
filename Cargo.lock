@@ -5073,7 +5073,7 @@ dependencies = [
 
 [[package]]
 name = "python-bindings"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "futures",
  "num-bigint",
@@ -6431,7 +6431,6 @@ dependencies = [
 [[package]]
 name = "starknet-devnet-core"
 version = "0.4.1"
-source = "git+https://github.com/baitcode/starknet-devnet.git?branch=experiment#b378eeb9f55f68276d3f73aed8f6c5aebec13ad2"
 dependencies = [
  "blockifier",
  "cairo-lang-starknet-classes",
@@ -6461,7 +6460,6 @@ dependencies = [
 [[package]]
 name = "starknet-devnet-types"
 version = "0.4.1"
-source = "git+https://github.com/baitcode/starknet-devnet.git?branch=experiment#b378eeb9f55f68276d3f73aed8f6c5aebec13ad2"
 dependencies = [
  "base64 0.22.1",
  "bigdecimal",

@@ -37,9 +37,11 @@ with starkbiter.get_environment("mainnet", block_id="0x0", block_hash="0x0") as 
     trader = TraderAgent(env)
     arbitrager = ArbitragerAgent(env)
 
+    # create sub
+
     blocks_produced = 0
     while blocks_produced < simulate_blocks:
-        events = env.get_events("price_changed")
+        events = env.get_events("price_changed")  # poll subscription
 
         eth_price_changed = events.filter_latest(lambda e: e["token"] == "ETH")
 

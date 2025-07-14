@@ -3,7 +3,7 @@ requires = ["maturin>=1.8,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "python-bindings"
+name = "starkbiter_bindings"
 requires-python = ">=3.10,<4.0"
 classifiers = [
     "Programming Language :: Rust",
@@ -14,6 +14,4 @@ dynamic = ["version"]
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
-
-[tool.poetry.dependencies]
-starknet-abi = { git = "https://github.com/NethermindEth/starknet-abi.git" }
+python-source = "python"

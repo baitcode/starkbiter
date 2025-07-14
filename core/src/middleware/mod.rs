@@ -28,14 +28,14 @@ use starknet_devnet_types::{
 
 use super::*;
 use crate::{
-    environment::{instruction::*, Environment},
+    environment::{instruction::EventFilter, Environment},
     middleware::traits::Middleware,
     tokens::TokenId,
 };
 
 pub mod connection;
 use connection::*;
-use starknet_core::types::{self as core_types, EmittedEvent};
+use starknet_core::types::{self as core_types, EmittedEvent, L1HandlerTransaction};
 
 /// A middleware structure that integrates with `revm`.
 ///
@@ -164,6 +164,27 @@ impl Middleware for StarkbiterMiddleware {
             .await
     }
 
+    async fn create_mocked_account<F>(
+        &self,
+        address: F,
+    ) -> Result<SingleOwnerAccount<Connection, LocalWallet>, ProviderError>
+    where
+        F: Into<Felt> + Send + Sync,
+    {
+        let signing_key: SigningKey = SigningKey::from_random();
+
+        let chain_id = self.connection.chain_id().await?;
+        let account = SingleOwnerAccount::new(
+            self.connection().clone(), // TODO: not thread safe
+            LocalWallet::from_signing_key(signing_key),
+            address.into(),
+            chain_id,
+            ExecutionEncoding::New,
+        );
+
+        Ok(account)
+    }
+
     async fn create_single_owner_account<S, F>(
         &self,
         signing_key: Option<S>,
@@ -286,6 +307,18 @@ impl Middleware for StarkbiterMiddleware {
         B: AsRef<BlockId> + Send + Sync,
     {
         self.connection().get_block_with_txs(block_id).await
+    }
+
+    async fn get_block_with_txs_from_fork<B>(
+        &self,
+        block_id: B,
+    ) -> Result<core_types::MaybePendingBlockWithTxs, ProviderError>
+    where
+        B: AsRef<BlockId> + Send + Sync,
+    {
+        self.connection()
+            .get_block_with_txs_from_fork(block_id)
+            .await
     }
 
     async fn get_block_with_receipts<B>(
@@ -609,6 +642,28 @@ impl Middleware for StarkbiterMiddleware {
         R: AsRef<[ProviderRequestData]> + Send + Sync,
     {
         self.connection().batch_requests(requests).await
+    }
+
+    async fn add_l1_handler_transaction<T>(&self, tx: T) -> Result<Felt, ProviderError>
+    where
+        T: Into<L1HandlerTransaction> + Send + Sync,
+    {
+        self.connection().add_l1_handler_transaction(tx).await
+    }
+
+    async fn replay_block_with_txs<B, F>(
+        &self,
+        block_id: B,
+        filters: F,
+        override_nonce: bool,
+    ) -> Result<(usize, usize, usize), ProviderError>
+    where
+        B: AsRef<BlockId> + Send + Sync,
+        F: Into<Option<Vec<EventFilter>>> + Send + Sync,
+    {
+        self.connection()
+            .replay_block_with_txs(block_id, filters, override_nonce)
+            .await
     }
 }
 

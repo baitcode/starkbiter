@@ -9,6 +9,7 @@ use futures::{stream::Peekable, Stream, StreamExt};
 use num_bigint::BigInt;
 use pyo3::prelude::*;
 use starkbiter_core::{
+    environment::instruction,
     middleware::{connection::Connection, traits::Middleware, StarkbiterMiddleware},
     tokens::TokenId,
 };
@@ -221,6 +222,43 @@ pub fn create_account<'p>(
         accounts_lock.insert(address.clone(), account);
 
         Ok(address)
+    })
+}
+
+#[pyfunction]
+pub fn create_mock_account<'p>(
+    py: Python<'p>,
+    middleware_id: &str,
+    address: &str,
+) -> PyResult<&'p PyAny> {
+    let middleware_id_local = middleware_id.to_string();
+    let address_local = address.to_string();
+
+    pyo3_asyncio::tokio::future_into_py::<_, _>(py, async move {
+        let middlewares_lock = middlewares().lock();
+        let guard = middlewares_lock.await;
+        let maybe_middleware = guard.get(middleware_id_local.as_str());
+
+        if maybe_middleware.is_none() {
+            return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                "Middleware not found for: {:?}",
+                &middleware_id_local
+            )));
+        }
+
+        let middleware = maybe_middleware.unwrap();
+
+        let maybe_account = middleware
+            .create_mocked_account(types::Felt::from_hex_unchecked(&address_local))
+            .await;
+
+        let account = maybe_account.unwrap();
+
+        let mut accounts_lock = accounts().lock().await;
+
+        accounts_lock.insert(address_local.to_string(), account);
+
+        Ok(address_local)
     })
 }
 
@@ -697,6 +735,7 @@ pub fn create_subscription<'p>(py: Python<'p>, middleware_id: &str) -> PyResult<
         let mut subscriptions_lock = subscriptions().lock().await;
         let random_id = uuid::Uuid::new_v4().to_string();
 
+        // TODO: remove peekable
         subscriptions_lock.insert(random_id.clone(), Mutex::new(subscription.peekable()));
 
         Ok(random_id)
@@ -729,5 +768,68 @@ pub fn poll_subscription<'p>(py: Python<'p>, subscription_id: &str) -> PyResult<
         }
 
         Ok(maybe_next.unwrap())
+    })
+}
+
+#[pyclass]
+#[derive(Clone)]
+pub struct EventFilter {
+    #[pyo3(get, set)]
+    pub from_address: String,
+
+    #[pyo3(get, set)]
+    pub keys: Vec<String>,
+}
+
+#[pyfunction]
+pub fn replay_block_with_txs<'p>(
+    py: Python<'p>,
+    middleware_id: &str,
+    block_id: BlockId,
+    has_events: Option<Vec<EventFilter>>,
+    override_nonce: Option<bool>,
+) -> PyResult<&'p PyAny> {
+    let middleware_id_local = middleware_id.to_string();
+
+    pyo3_asyncio::tokio::future_into_py::<_, _>(py, async move {
+        let middlewares_lock = middlewares().lock().await;
+        let maybe_middleware = middlewares_lock.get(&middleware_id_local);
+
+        if maybe_middleware.is_none() {
+            return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                "Middleware not found for: {:?}",
+                &middleware_id_local
+            )));
+        }
+
+        let middleware = maybe_middleware.unwrap();
+
+        let block_id = types::BlockId::try_from(block_id).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid block id: {:?}", e))
+        })?;
+
+        // TODO(baitcode): validate event filters
+        let has_events = has_events.map(|filters| {
+            filters
+                .iter()
+                .map(|f| instruction::EventFilter {
+                    from_address: types::Felt::from_hex_unchecked(&f.from_address),
+                    keys: f
+                        .keys
+                        .iter()
+                        .map(|s| types::Felt::from_hex_unchecked(s))
+                        .collect(),
+                })
+                .collect::<Vec<_>>()
+        });
+
+        middleware
+            .replay_block_with_txs(block_id, has_events, override_nonce.unwrap_or(false))
+            .await
+            .map_err(|e| {
+                PyErr::new::<crate::ProviderError, _>(format!("Failed to replay block: {}", e))
+            })?;
+
+        Ok(())
     })
 }

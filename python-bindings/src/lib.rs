@@ -6,23 +6,31 @@ mod middleware;
 
 /// A Python module implemented in Rust.
 #[pymodule]
+#[pyo3(name = "starkbiter_bindings")]
 fn python_bindings(_py: Python, m: &PyModule) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(environment::set_tracing, m)?)?;
     m.add_function(wrap_pyfunction!(environment::create_environment, m)?)?;
+
     m.add_function(wrap_pyfunction!(middleware::create_middleware, m)?)?;
+
     m.add_function(wrap_pyfunction!(middleware::declare_contract, m)?)?;
+
     m.add_function(wrap_pyfunction!(middleware::create_account, m)?)?;
+    m.add_function(wrap_pyfunction!(middleware::create_mock_account, m)?)?;
+
     m.add_function(wrap_pyfunction!(middleware::account_execute, m)?)?;
     m.add_function(wrap_pyfunction!(middleware::top_up_balance, m)?)?;
     m.add_function(wrap_pyfunction!(middleware::set_gas_price, m)?)?;
     m.add_function(wrap_pyfunction!(middleware::set_storage, m)?)?;
     m.add_function(wrap_pyfunction!(middleware::get_storage, m)?)?;
     m.add_function(wrap_pyfunction!(middleware::call, m)?)?;
+    m.add_function(wrap_pyfunction!(middleware::replay_block_with_txs, m)?)?;
+
     m.add_function(wrap_pyfunction!(middleware::impersonate, m)?)?;
     m.add_function(wrap_pyfunction!(middleware::stop_impersonate, m)?)?;
+
     m.add_function(wrap_pyfunction!(middleware::create_subscription, m)?)?;
     m.add_function(wrap_pyfunction!(middleware::poll_subscription, m)?)?;
-
-    m.add_function(wrap_pyfunction!(environment::set_tracing, m)?)?;
 
     m.add_class::<environment::ForkParams>()?;
     m.add_class::<middleware::BlockId>()?;

@@ -67,13 +67,21 @@ async def main():
     res = await python_bindings.call(middleware_id, call, python_bindings.BlockId.from_tag("latest"))
     print("Call result:", res)
 
-    await python_bindings.account_execute(account_id, [
-        python_bindings.Call(
-            to=ETH_ERC20_MAINNET,
-            selector=mint_function.signature.hex(),
-            calldata=mint_calldata,
-        )
-    ])
+    # await python_bindings.account_execute(account_id, [
+    #     python_bindings.Call(
+    #         to=ETH_ERC20_MAINNET,
+    #         selector=mint_function.signature.hex(),
+    #         calldata=mint_calldata,
+    #     )
+    # ])
+
+    subscripiton_id = await python_bindings.create_subscription(middleware_id)
+
+    while True:
+        await python_bindings.do_swap()
+
+        await python_bindings.create_block()
+        events = await python_bindings.poll_subscription(subscription_id)
 
 
 with asyncio.Runner() as runner:

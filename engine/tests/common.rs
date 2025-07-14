@@ -10,7 +10,10 @@ use starkbiter_engine::{
 
 #[allow(unused)]
 fn trace() {
-    std::env::set_var("RUST_LOG", "trace");
+    std::env::set_var(
+        "RUST_LOG",
+        "none,starkbiter_core=debug,starknet-devnet-core=info",
+    );
     tracing_subscriber::fmt::init();
 }
 

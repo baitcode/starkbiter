@@ -1,11 +1,23 @@
 use std::num::NonZero;
 
 use starkbiter_core::{
-    environment::Environment,
+    environment::{instruction::EventFilter, Environment},
     middleware::{traits::Middleware, StarkbiterMiddleware},
 };
-use starknet_core::types::{BlockId, BlockTag, ContractClass, Felt, MaybePendingBlockWithTxs};
-use starknet_devnet_types::{chain_id::ChainId, rpc::gas_modification::GasModificationRequest};
+use starknet::providers::sequencer::models::Block;
+use starknet_core::{
+    types::{
+        BlockId, BlockTag, BroadcastedDeclareTransactionV3, BroadcastedDeployAccountTransactionV3,
+        BroadcastedInvokeTransactionV3, ContractClass, DeclareTransaction,
+        DeployAccountTransaction, Felt, InvokeTransaction, L1HandlerTransaction,
+        MaybePendingBlockWithTxs,
+    },
+    utils::starknet_keccak,
+};
+use starknet_devnet_types::{
+    chain_id::ChainId, rpc::gas_modification::GasModificationRequest,
+    starknet_api::test_utils::deploy_account,
+};
 use url::Url;
 
 const SOME_ADDRESS: &str = "0x00000005dd3D2F4429AF886cD1a3b08289DBcEa99A294197E9eB43b0e0325b4b";
@@ -292,3 +304,109 @@ async fn test_class_at() {
 
 // TODO: add impersonation
 // TODO: logging?
+
+#[tokio::test]
+async fn test_get_block_with_txs_for_future_blocks() {
+    std::env::set_var("RUST_LOG", "debug");
+    let _ = tracing_subscriber::fmt::try_init();
+
+    // Custom chain ID for Starknet
+    let chain_id_felt = Felt::from_hex("0x696e766f6b65").unwrap();
+    let chain_id = ChainId::Custom(chain_id_felt);
+
+    let alchemy_key = std::env::var("ALCHEMY_KEY").expect("ALCHEMY_KEY must be set");
+    let url = Url::parse(&format!(
+        "https://starknet-mainnet.g.alchemy.com/starknet/version/rpc/v0_8/{}/",
+        alchemy_key
+    ))
+    .unwrap();
+
+    // Spin up a new environment with the specified chain ID
+    let env = Environment::builder()
+        .with_chain_id(chain_id.into())
+        .with_fork(
+            url,
+            0,
+            Felt::from_hex_unchecked(
+                "0x47c3637b57c2b079b93c61539950c17e868a28f46cdef28f88521067f21e943",
+            ),
+        )
+        .build();
+
+    let client = StarkbiterMiddleware::new(&env, Some("wow")).unwrap();
+
+    let block = client
+        .get_block_with_txs_from_fork(BlockId::Number(1558913))
+        .await
+        .expect("Block was not found should've been");
+
+    assert!(
+        block.transactions().len() == 194,
+        "Expected 14 transactions in block 6, got: {}",
+        block.transactions().len()
+    );
+}
+
+#[tokio::test]
+async fn test_replay_block_transactions_containing_ekubo_swaps() {
+    std::env::set_var(
+        "RUST_LOG",
+        "starkbiter_core=trace,starknet_devnet_core=debug,starknet_devnet_core::starknet::defaulter=info,blockifier=debug",
+    );
+    // std::env::set_var("RUST_LOG", "trace");
+    let _ = tracing_subscriber::fmt::try_init();
+
+    // Custom chain ID for Starknet
+    let chain_id = ChainId::Mainnet;
+
+    let alchemy_key = std::env::var("ALCHEMY_KEY").expect("ALCHEMY_KEY must be set");
+    let url = Url::parse(&format!(
+        "https://starknet-mainnet.g.alchemy.com/starknet/version/rpc/v0_8/{}/",
+        alchemy_key
+    ))
+    .unwrap();
+
+    // Spin up a new environment with the specified chain ID
+    let env = Environment::builder()
+        .with_chain_id(chain_id.into())
+        .with_fork(
+            url,
+            1586288,
+            Felt::from_hex_unchecked(
+                "0x634060800585f64b2f5c51cfd14f2770057b7a28ab39767558159e8037acd38",
+            ),
+        )
+        .build();
+
+    let client = StarkbiterMiddleware::new(&env, Some("wow")).unwrap();
+
+    let filter = EventFilter {
+        // Ekubo: Core
+        from_address: Felt::from_hex_unchecked(
+            "0x00000005dd3d2f4429af886cd1a3b08289dbcea99a294197e9eb43b0e0325b4b",
+        ),
+        // Selector for: Swapped
+        keys: vec![Felt::from_hex_unchecked(
+            "0x157717768aca88da4ac4279765f09f4d0151823d573537fbbeb950cdbd9a870",
+        )],
+    };
+
+    let (added, ignored, failed) = client
+        .replay_block_with_txs(BlockId::Number(1586289), Some(vec![filter]), false)
+        .await
+        .expect("Block was not found should've been");
+
+    assert!(
+        added > 0,
+        "Expected to add some transactions, got: {}",
+        added
+    );
+}
+
+// TODO: add impersonation
+// TODO: logging?
+// Finished the replay tx functionality getting back to python bindings. There
+// should not be any big rust changes from now on. Well, I didn't touch on
+// non-blocking event polling feature yet, postponed it for later, as it's
+// non-blocking ;). I'll try to do video tomo. But feels like I most likely do
+// it on Saturday.

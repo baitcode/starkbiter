@@ -17,11 +17,14 @@
 //! - [`Instruction`]: Enum indicating the type of instruction that is being
 //!   sent to the Starknet.
 
-use std::thread::{self, JoinHandle};
+use std::{
+    num::NonZero,
+    thread::{self, JoinHandle},
+};
 
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
-use starknet::providers::Url;
-use starknet_core::types as core_types;
+use starknet::providers::{jsonrpc::HttpTransport, JsonRpcClient, Provider, Url};
+use starknet_core::types::{self as core_types, TransactionExecutionStatus};
 use starknet_devnet_core::{
     constants::{self as devnet_constants},
     error::Error as DevnetError,
@@ -81,6 +84,24 @@ pub(crate) type OutcomeSender = Sender<Result<Outcome, StarkbiterCoreError>>;
 /// emitted from transactions.
 pub(crate) type OutcomeReceiver = Receiver<Result<Outcome, StarkbiterCoreError>>;
 
+const DEFAULT_RESOURCE_BOUNDS: starknet_api::transaction::fields::ValidResourceBounds =
+    starknet_api::transaction::fields::ValidResourceBounds::AllResources(
+        starknet_api::transaction::fields::AllResourceBounds {
+            l1_gas: starknet_api::transaction::fields::ResourceBounds {
+                max_amount: starknet_api::execution_resources::GasAmount(1000000),
+                max_price_per_unit: starknet_api::block::GasPrice(1),
+            },
+            l1_data_gas: starknet_api::transaction::fields::ResourceBounds {
+                max_amount: starknet_api::execution_resources::GasAmount(1000000),
+                max_price_per_unit: starknet_api::block::GasPrice(1),
+            },
+            l2_gas: starknet_api::transaction::fields::ResourceBounds {
+                max_amount: starknet_api::execution_resources::GasAmount(1000000),
+                max_price_per_unit: starknet_api::block::GasPrice(1),
+            },
+        },
+    );
+
 /// Represents a sandboxed Starknet environment.
 ///
 /// ## Features
@@ -109,7 +130,7 @@ pub struct Environment {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct EnvironmentParameters {
     /// The chain ID for the environment, used to identify the network.
-    /// IMPORTANT: Be careful when specifying this use anly ascii characters.
+    /// IMPORTANT: Be careful when specifying this use only ascii characters.
     pub chain_id: Option<ChainId>,
 
     /// The label used to define the [`Environment`].
@@ -252,7 +273,7 @@ impl Environment {
 
                     // TODO: support forking
                     // TODO: Simulated block production
-                    // TODO: every instruction whould encapsulate handling logic, that would allow
+                    // TODO: every instruction would encapsulate handling logic, that would allow
                     // to simplify the code and split environment mod to smaller chunks.
                     process_instructions(
                         starknet_config,
@@ -1130,7 +1151,7 @@ async fn process_instructions(
                         .set_next_block_gas(gas_modification.clone())
                         .map_err(StarkbiterCoreError::DevnetError)
                         .map(|modification| {
-                            Outcome::Cheat(instruction::CheatcodesReturn::SetNextBlockGas(
+                            Outcome::Cheat(instruction::CheatcodesOutcome::SetNextBlockGas(
                                 modification,
                             ))
                         });
@@ -1209,7 +1230,7 @@ async fn process_instructions(
                     let class_hash = api_core::ClassHash(class_hash);
 
                     let outcome = Ok(Outcome::Cheat(
-                        instruction::CheatcodesReturn::DeclareContract(class_hash.0),
+                        instruction::CheatcodesOutcome::DeclareContract(class_hash.0),
                     ));
                     if let Err(e) = sender.send(outcome) {
                         error!("Failed to send DeclareContract outcome: {:?}", e);
@@ -1272,7 +1293,7 @@ async fn process_instructions(
                             error!("Error minting tokens for new account: {:?}", e);
                         }
                         if let Err(e) = starknet.commit_diff() {
-                            error!("Error commiting diff to devnet: {:?}", e);
+                            error!("Error committing diff to devnet: {:?}", e);
                         }
                     }
 
@@ -1289,31 +1310,7 @@ async fn process_instructions(
                     }
 
                     let mut tx = starknet_api::transaction::DeployAccountTransactionV3 {
-                        resource_bounds:
-                            starknet_api::transaction::fields::ValidResourceBounds::AllResources(
-                                starknet_api::transaction::fields::AllResourceBounds {
-                                    l1_gas: starknet_api::transaction::fields::ResourceBounds {
-                                        max_amount: starknet_api::execution_resources::GasAmount(
-                                            1000000,
-                                        ),
-                                        max_price_per_unit: starknet_api::block::GasPrice(1),
-                                    },
-                                    l1_data_gas:
-                                        starknet_api::transaction::fields::ResourceBounds {
-                                            max_amount:
-                                                starknet_api::execution_resources::GasAmount(
-                                                    1000000,
-                                                ),
-                                            max_price_per_unit: starknet_api::block::GasPrice(1),
-                                        },
-                                    l2_gas: starknet_api::transaction::fields::ResourceBounds {
-                                        max_amount: starknet_api::execution_resources::GasAmount(
-                                            1000000,
-                                        ),
-                                        max_price_per_unit: starknet_api::block::GasPrice(1),
-                                    },
-                                },
-                            ),
+                        resource_bounds: DEFAULT_RESOURCE_BOUNDS,
                         tip: starknet_api::transaction::fields::Tip(0),
                         signature: starknet_api::transaction::fields::TransactionSignature(vec![]),
                         nonce: starknet_api::core::Nonce(core_types::Felt::ZERO),
@@ -1361,7 +1358,7 @@ async fn process_instructions(
                         .add_deploy_account_transaction(BroadcastedDeployAccountTransaction::V3(tx))
                         .map_err(StarkbiterCoreError::DevnetError)
                         .map(|(_, address)| {
-                            Outcome::Cheat(instruction::CheatcodesReturn::CreateAccount(
+                            Outcome::Cheat(instruction::CheatcodesOutcome::CreateAccount(
                                 address.into(),
                             ))
                         });
@@ -1415,7 +1412,7 @@ async fn process_instructions(
 
                     event_broadcaster.send(converted).unwrap_or_default();
 
-                    let outcome = Ok(Outcome::Cheat(instruction::CheatcodesReturn::CreateBlock));
+                    let outcome = Ok(Outcome::Cheat(instruction::CheatcodesOutcome::CreateBlock));
                     if let Err(e) = sender.send(outcome) {
                         error!("Failed to send CreateBlock outcome: {:?}", e);
                         stop = true;
@@ -1432,7 +1429,7 @@ async fn process_instructions(
                     let outcome = starknet
                         .add_l1_handler_transaction(l1_handler_transaction.clone())
                         .map_err(StarkbiterCoreError::DevnetError)
-                        .map(|res| Outcome::Cheat(instruction::CheatcodesReturn::L1Message(res)));
+                        .map(|res| Outcome::Cheat(instruction::CheatcodesOutcome::L1Message(res)));
 
                     if let Err(e) = sender.send(outcome) {
                         error!("Failed to send L1Message outcome: {:?}", e);
@@ -1504,7 +1501,7 @@ async fn process_instructions(
                         continue;
                     }
 
-                    let outcome = Ok(Outcome::Cheat(instruction::CheatcodesReturn::TopUpBalance));
+                    let outcome = Ok(Outcome::Cheat(instruction::CheatcodesOutcome::TopUpBalance));
                     if let Err(e) = sender.send(outcome) {
                         error!("Failed to send TopUpBalance outcome: {:?}", e);
                         stop = true;
@@ -1519,7 +1516,7 @@ async fn process_instructions(
                     let outcome = starknet
                         .impersonate_account(ContractAddress::new(*address).unwrap())
                         .map_err(StarkbiterCoreError::DevnetError)
-                        .map(|_| Outcome::Cheat(instruction::CheatcodesReturn::Impersonate));
+                        .map(|_| Outcome::Cheat(instruction::CheatcodesOutcome::Impersonate));
 
                     if let Err(e) = sender.send(outcome) {
                         error!("Failed to send Impersonate outcome: {:?}", e);
@@ -1535,7 +1532,7 @@ async fn process_instructions(
                     starknet.stop_impersonating_account(&ContractAddress::new(*address).unwrap());
 
                     let outcome = Ok(Outcome::Cheat(
-                        instruction::CheatcodesReturn::StopImpersonating,
+                        instruction::CheatcodesOutcome::StopImpersonating,
                     ));
 
                     if let Err(e) = sender.send(outcome) {
@@ -1593,7 +1590,7 @@ async fn process_instructions(
                         .map_err(|e| {
                             StarkbiterCoreError::DevnetError(DevnetError::BlockifierStateError(e))
                         })
-                        .map(|_| Outcome::Cheat(instruction::CheatcodesReturn::SetStorageAt));
+                        .map(|_| Outcome::Cheat(instruction::CheatcodesOutcome::SetStorageAt));
 
                     if let Err(e) = sender.send(outcome) {
                         error!("Failed to send SetStorageAt outcome: {:?}", e);
@@ -1601,13 +1598,18 @@ async fn process_instructions(
                     }
                 }
                 instruction::CheatInstruction::GetDeployedContractAddress { tx_hash } => {
+                    trace!(
+                        "Environment. Received GetDeployedContractAddress instruction: tx_hash: {:?}",
+                        tx_hash,
+                    );
+
                     let receipt = starknet
                         .get_transaction_receipt_by_hash(tx_hash)
                         .map_err(StarkbiterCoreError::DevnetError)?;
 
                     let outcome = if let TransactionReceipt::Deploy(deploy_receipt) = receipt {
                         Ok(Outcome::Cheat(
-                            instruction::CheatcodesReturn::GetDeployedContractAddress(
+                            instruction::CheatcodesOutcome::GetDeployedContractAddress(
                                 deploy_receipt.contract_address.into(),
                             ),
                         ))
@@ -1621,6 +1623,316 @@ async fn process_instructions(
 
                     if let Err(e) = sender.send(outcome) {
                         error!("Failed to send GetDeployedContractAddress outcome: {:?}", e);
+                        stop = true;
+                    }
+                }
+                instruction::CheatInstruction::GetBlockWithTxs { block_id } => {
+                    trace!(
+                        "Environment. Received GetBlockWithTxs instruction: tx_hash: {:?}",
+                        block_id,
+                    );
+                    let maybe_url = starknet.config.fork_config.clone().url;
+                    if maybe_url.is_none() {
+                        if let Err(e) = sender.send(Err(StarkbiterCoreError::NoForkConfig)) {
+                            error!("Failed to send Cheating GetBlockWithTxs error: {:?}", e);
+                            stop = true;
+                        }
+                        continue;
+                    }
+
+                    let url = maybe_url.unwrap();
+
+                    let provider = JsonRpcClient::new(HttpTransport::new(url.clone()));
+
+                    let maybe_block = provider.get_block_with_txs(block_id).await;
+
+                    if let Err(e) = maybe_block {
+                        if let Err(e) =
+                            sender.send(Err(StarkbiterCoreError::InternalError(e.to_string())))
+                        {
+                            error!("Failed to send Cheating GetBlockWithTxs error: {:?}", e);
+                            stop = true;
+                        }
+                        continue;
+                    }
+
+                    let block = maybe_block.unwrap();
+
+                    let outcome = Ok(Outcome::Cheat(
+                        instruction::CheatcodesOutcome::GetBlockWithTxs(Box::new(block)),
+                    ));
+
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send Cheating GetBlockWithTxs result: {:?}", e);
+                        stop = true;
+                    }
+                }
+                instruction::CheatInstruction::ReplayBlockWithTxs {
+                    block_id,
+                    has_events: filters,
+                    override_nonce,
+                } => {
+                    // TODO: this branch is extremely complex and has to be refactored into separate
+                    // file.
+                    trace!(
+                        "Environment. Received ReplayBlockWithTxs instruction: tx_hash: {:?}",
+                        block_id,
+                    );
+                    let maybe_url = starknet.config.fork_config.clone().url;
+                    if maybe_url.is_none() {
+                        if let Err(e) = sender.send(Err(StarkbiterCoreError::NoForkConfig)) {
+                            error!("Failed to send Cheating GetBlockWithTxs error: {:?}", e);
+                            stop = true;
+                        }
+                        continue;
+                    }
+
+                    let url = maybe_url.unwrap();
+
+                    let provider = JsonRpcClient::new(HttpTransport::new(url.clone()));
+
+                    let maybe_block = provider.get_block_with_receipts(block_id).await;
+
+                    if let Err(e) = maybe_block {
+                        if let Err(e) =
+                            sender.send(Err(StarkbiterCoreError::InternalError(e.to_string())))
+                        {
+                            error!("Failed to send Cheating GetBlockWithTxs error: {:?}", e);
+                            stop = true;
+                        }
+                        continue;
+                    }
+
+                    let block = maybe_block.unwrap();
+
+                    fn felt_to_u128(f: core_types::Felt) -> Option<NonZero<u128>> {
+                        NonZero::new(
+                            f.to_bigint()
+                                .try_into()
+                                .expect("Felt should be convertible to u128"),
+                        )
+                    }
+
+                    let request = match &block {
+                        core_types::MaybePendingBlockWithReceipts::Block(b) => {
+                            GasModificationRequest {
+                                gas_price_wei: felt_to_u128(b.l1_gas_price.price_in_wei),
+                                gas_price_fri: felt_to_u128(b.l1_gas_price.price_in_fri),
+                                data_gas_price_wei: felt_to_u128(b.l1_data_gas_price.price_in_wei),
+                                data_gas_price_fri: felt_to_u128(b.l1_data_gas_price.price_in_fri),
+                                l2_gas_price_wei: felt_to_u128(b.l2_gas_price.price_in_wei),
+                                l2_gas_price_fri: felt_to_u128(b.l2_gas_price.price_in_fri),
+                                generate_block: Some(true),
+                            }
+                        }
+                        core_types::MaybePendingBlockWithReceipts::PendingBlock(b) => {
+                            GasModificationRequest {
+                                gas_price_wei: felt_to_u128(b.l1_gas_price.price_in_wei),
+                                gas_price_fri: felt_to_u128(b.l1_gas_price.price_in_fri),
+                                data_gas_price_wei: felt_to_u128(b.l1_data_gas_price.price_in_wei),
+                                data_gas_price_fri: felt_to_u128(b.l1_data_gas_price.price_in_fri),
+                                l2_gas_price_wei: felt_to_u128(b.l2_gas_price.price_in_wei),
+                                l2_gas_price_fri: felt_to_u128(b.l2_gas_price.price_in_fri),
+                                generate_block: Some(true),
+                            }
+                        }
+                    };
+
+                    let modification_result = starknet.set_next_block_gas(request);
+
+                    if let Err(e) = modification_result {
+                        let outcome = Err(StarkbiterCoreError::DevnetError(e));
+
+                        if let Err(e) = sender.send(outcome) {
+                            error!("Failed to send Cheating ReplayBlockWithTxs error: {:?}", e);
+                            stop = true;
+                        }
+                        continue;
+                    }
+
+                    let txs = block.transactions();
+
+                    let mut added_tx: usize = 0;
+                    let mut ignored_tx: usize = 0;
+                    let mut failed_tx: usize = 0;
+
+                    trace!(
+                        "Block has {:?} transactions. Applying them to the devnet.",
+                        txs.len(),
+                    );
+
+                    for tx in txs.iter() {
+                        // Note(baitcode): I prefer creating core_types as they are much simpler
+                        // I've added conversion to devnet types in devnet crate. This is not
+                        // the most performant solution, but is simple.
+
+                        if tx.receipt.execution_result().status()
+                            == TransactionExecutionStatus::Reverted
+                        {
+                            trace!(
+                                "Skipping transaction with reverted execution result: {:?}",
+                                tx
+                            );
+                            continue;
+                        };
+
+                        if let Some(filters) = filters {
+                            let has_events = tx.receipt.events().iter().any(|e| {
+                                filters.iter().any(|f| {
+                                    let res = e.from_address == f.from_address && e.keys == f.keys;
+                                    if res {
+                                        trace!(
+                                            "Hash: {:?}, Event: {:?}, Filter: {:?}",
+                                            tx.receipt.transaction_hash(),
+                                            e,
+                                            f
+                                        );
+                                    }
+                                    res
+                                })
+                            });
+
+                            if !has_events {
+                                trace!("No events that match filter. Ignoring the transaction.");
+                                ignored_tx += 1;
+                                continue;
+                            }
+                        }
+
+                        let hash = tx.receipt.transaction_hash();
+
+                        let addition_result = match &tx.transaction {
+                            // TODO(baitcode): Add Invoke V1 support
+                            core_types::TransactionContent::Invoke(
+                                core_types::InvokeTransactionContent::V3(invoke_tx_v3),
+                            ) => {
+                                trace!("Adding invoke transaction...");
+                                let nonce = if *override_nonce {
+                                    starknet
+                                        .get_state()
+                                        .get_nonce_at(
+                                            invoke_tx_v3
+                                                .sender_address
+                                                .try_into()
+                                                .expect("Should always work"),
+                                        )
+                                        .unwrap()
+                                        .0
+                                } else {
+                                    invoke_tx_v3.nonce
+                                };
+
+                                let tx = core_types::BroadcastedInvokeTransactionV3 {
+                                    sender_address: invoke_tx_v3.sender_address,
+                                    calldata: invoke_tx_v3.calldata.clone(),
+                                    signature: invoke_tx_v3.signature.clone(),
+                                    nonce,
+                                    resource_bounds: invoke_tx_v3.resource_bounds.clone(),
+                                    tip: invoke_tx_v3.tip,
+                                    paymaster_data: invoke_tx_v3.paymaster_data.clone(),
+                                    account_deployment_data: invoke_tx_v3
+                                        .account_deployment_data
+                                        .clone(),
+                                    nonce_data_availability_mode: invoke_tx_v3
+                                        .nonce_data_availability_mode,
+                                    fee_data_availability_mode: invoke_tx_v3
+                                        .fee_data_availability_mode,
+                                    is_query: false,
+                                };
+                                let addr = ContractAddress::new(tx.sender_address).unwrap();
+
+                                starknet
+                                    .impersonate_account(addr)
+                                    .expect("Should always work");
+
+                                let result = starknet.add_invoke_transaction(
+                                    BroadcastedInvokeTransaction::V3(tx.into()),
+                                );
+
+                                starknet.stop_impersonating_account(&addr);
+
+                                result
+                            }
+                            core_types::TransactionContent::L1Handler(l1_handler_transaction) => {
+                                trace!("Adding deploy L1 handler transaction...");
+
+                                let l1_tx = &core_types::L1HandlerTransaction {
+                                    transaction_hash: *hash,
+                                    version: l1_handler_transaction.version,
+                                    nonce: l1_handler_transaction.nonce,
+                                    contract_address: l1_handler_transaction.contract_address,
+                                    entry_point_selector: l1_handler_transaction
+                                        .entry_point_selector,
+                                    calldata: l1_handler_transaction.calldata.clone(),
+                                };
+
+                                starknet.add_l1_handler_transaction(l1_tx.into())
+                            }
+                            core_types::TransactionContent::DeployAccount(
+                                core_types::DeployAccountTransactionContent::V3(
+                                    deploy_account_transaction,
+                                ),
+                            ) => {
+                                trace!("Adding deploy account transaction...");
+
+                                let tx = core_types::BroadcastedDeployAccountTransactionV3 {
+                                    signature: deploy_account_transaction.signature.clone(),
+                                    nonce: deploy_account_transaction.nonce,
+                                    contract_address_salt: deploy_account_transaction
+                                        .contract_address_salt,
+                                    constructor_calldata: deploy_account_transaction
+                                        .constructor_calldata
+                                        .clone(),
+                                    tip: deploy_account_transaction.tip,
+                                    paymaster_data: deploy_account_transaction
+                                        .paymaster_data
+                                        .clone(),
+                                    nonce_data_availability_mode: deploy_account_transaction
+                                        .nonce_data_availability_mode,
+                                    fee_data_availability_mode: deploy_account_transaction
+                                        .fee_data_availability_mode,
+                                    is_query: false,
+                                    class_hash: deploy_account_transaction.class_hash,
+                                    resource_bounds: deploy_account_transaction
+                                        .resource_bounds
+                                        .clone(),
+                                };
+
+                                starknet
+                                    .add_deploy_account_transaction(
+                                        BroadcastedDeployAccountTransaction::V3(tx.into()),
+                                    )
+                                    .map(|res| res.0)
+                            }
+                            _ => {
+                                trace!("TX: {:?}", tx);
+                                ignored_tx += 1;
+                                Ok(core_types::Felt::ZERO)
+                            }
+                        };
+
+                        if let Err(e) = addition_result {
+                            error!("Failed to add transaction: {:?}", e);
+                            failed_tx += 1;
+                        } else {
+                            info!(
+                                "Transaction processed: {} of {}. Ignored: {}",
+                                added_tx,
+                                txs.len(),
+                                ignored_tx
+                            );
+                            added_tx += 1;
+                        }
+                    }
+
+                    let outcome = Ok(Outcome::Cheat(
+                        instruction::CheatcodesOutcome::ReplayBlockWithTxs(
+                            added_tx, ignored_tx, failed_tx,
+                        ),
+                    ));
+
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send Cheating ReplayBlockWithTxs result: {:?}", e);
                         stop = true;
                     }
                 }

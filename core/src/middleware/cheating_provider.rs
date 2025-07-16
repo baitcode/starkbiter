@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 use auto_impl::auto_impl;
 use starknet::{providers::ProviderError, signers::SigningKey};
-use starknet_core::types::{BlockId, Felt, L1HandlerTransaction, MaybePendingBlockWithTxs};
+use starknet_core::types::{
+    BlockId, EmittedEvent, Felt, L1HandlerTransaction, MaybePendingBlockWithTxs,
+};
 use starknet_devnet_types::{
     num_bigint::BigUint,
     rpc::gas_modification::{GasModification, GasModificationRequest},
@@ -16,8 +18,8 @@ use crate::{environment::instruction::EventFilter, tokens::TokenId};
 #[auto_impl(&, Box, Arc)]
 pub trait CheatingProvider {
     /// Makes underlying provider to create a new block out of all pending
-    /// changes.
-    async fn create_block(&self) -> Result<(), ProviderError>;
+    /// changes. Returns the hash of the created block.
+    async fn create_block(&self) -> Result<Felt, ProviderError>;
 
     /// Creates a new account with the given signing key, class hash, and
     /// prefunded balance. Returns the address of the created account.
@@ -120,4 +122,13 @@ pub trait CheatingProvider {
     where
         B: AsRef<BlockId> + Send + Sync,
         F: Into<Option<Vec<EventFilter>>> + Send + Sync;
+
+    /// Gets all events in one go given filter parameters.
+    async fn get_all_events(
+        &self,
+        from_block: Option<BlockId>,
+        to_block: Option<BlockId>,
+        address: Option<Felt>,
+        keys: Option<Vec<Vec<Felt>>>,
+    ) -> Result<Vec<EmittedEvent>, ProviderError>;
 }

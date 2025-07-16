@@ -18,6 +18,7 @@ use starknet_core::types::{self};
 use starknet_devnet_types::rpc::gas_modification::GasModificationRequest;
 use starknet_signers::{LocalWallet, SigningKey};
 use tokio::sync::Mutex;
+use tracing::trace;
 
 use crate::environment::env_registry;
 
@@ -849,6 +850,7 @@ impl EventFilter {
     fn new(
         from_address: &str,
         keys: Vec<Vec<&str>>,
+
         // TODO(baitcode): for some reason pyo3 does
         // not support using python objects
         // in python objects
@@ -991,8 +993,60 @@ pub fn replay_block_with_txs<'p>(
 pub fn get_block_events<'p>(
     py: Python<'p>,
     middleware_id: &str,
-    filter: EventFilter,
+    from_block: Option<BlockId>,
+    to_block: Option<BlockId>,
+    from_address: Option<&str>,
+    keys: Option<Vec<Vec<&str>>>,
 ) -> PyResult<&'p PyAny> {
+    let middleware_id_local = middleware_id.to_string();
+    let from_address_local = from_address.map(|s| s.to_string());
+    let keys_local = keys.map(|keys| {
+        keys.iter()
+            .map(|v| {
+                v.iter()
+                    .map(|s| types::Felt::from_hex_unchecked(s))
+                    .collect()
+            })
+            .collect()
+    });
+
+    pyo3_asyncio::tokio::future_into_py::<_, _>(py, async move {
+        let middlewares_lock = middlewares().lock().await;
+        let maybe_middleware = middlewares_lock.get(&middleware_id_local);
+
+        if maybe_middleware.is_none() {
+            return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                "Middleware not found for: {:?}",
+                &middleware_id_local
+            )));
+        }
+
+        let middleware = maybe_middleware.unwrap();
+
+        let events = middleware
+            .get_all_events(
+                from_block.map(|b| types::BlockId::try_from(b).unwrap()),
+                to_block.map(|b| types::BlockId::try_from(b).unwrap()),
+                from_address_local.map(|s| types::Felt::from_hex_unchecked(&s)),
+                keys_local,
+            )
+            .await
+            .map_err(|e| {
+                PyErr::new::<crate::ProviderError, _>(format!("Failed to get block events: {}", e))
+            })?;
+
+        let results = events
+            .iter()
+            .map(Event::try_from)
+            .flat_map(|r| r.ok())
+            .collect::<Vec<_>>();
+
+        Ok(results)
+    })
+}
+
+#[pyfunction]
+pub fn create_block<'p>(py: Python<'p>, middleware_id: &str) -> PyResult<&'p PyAny> {
     let middleware_id_local = middleware_id.to_string();
 
     pyo3_asyncio::tokio::future_into_py::<_, _>(py, async move {
@@ -1008,44 +1062,15 @@ pub fn get_block_events<'p>(
 
         let middleware = maybe_middleware.unwrap();
 
-        let mut results: Vec<Event> = vec![];
+        let block_hash = middleware.create_block().await.map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to create block: {}",
+                e
+            ))
+        })?;
 
-        let mut continuation_token = Option::None;
+        trace!("Created block with hash: {}", block_hash);
 
-        loop {
-            let local_filter = filter.clone();
-
-            let page = middleware
-                // TODO(baitcode): pass filter by reference
-                .get_events(
-                    types::EventFilter::from(&local_filter),
-                    continuation_token,
-                    100,
-                )
-                .await
-                .map_err(|e| {
-                    PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                        "Can't get events: {:?}",
-                        e
-                    ))
-                })?;
-
-            let mut page_events = page
-                .events
-                .iter()
-                .map(|e| e.try_into())
-                .filter_map(|e| e.ok())
-                .collect();
-
-            results.append(&mut page_events);
-
-            if let Some(token) = page.continuation_token {
-                continuation_token = Some(token)
-            } else {
-                break;
-            }
-        }
-
-        Ok(results)
+        Ok(block_hash.to_hex_string())
     })
 }

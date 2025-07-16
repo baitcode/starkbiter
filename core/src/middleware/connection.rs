@@ -132,13 +132,13 @@ impl CheatingProvider for Connection {
         }
     }
 
-    async fn create_block(&self) -> Result<(), ProviderError> {
+    async fn create_block(&self) -> Result<Felt, ProviderError> {
         let to_send = Instruction::Cheat(CheatInstruction::CreateBlock {});
 
         let res = self.send_instruction_recv_outcome(to_send).await?;
 
-        if let Outcome::Cheat(CheatcodesOutcome::CreateBlock) = res {
-            Ok(())
+        if let Outcome::Cheat(CheatcodesOutcome::CreateBlock(block_hash)) = res {
+            Ok(block_hash)
         } else {
             Err(ProviderError::RateLimited)
         }
@@ -372,6 +372,29 @@ impl CheatingProvider for Connection {
 
         if let Outcome::Cheat(CheatcodesOutcome::ReplayBlockWithTxs(added, ignored, failed)) = res {
             Ok((added, ignored, failed))
+        } else {
+            Err(ProviderError::RateLimited)
+        }
+    }
+
+    async fn get_all_events(
+        &self,
+        from_block: Option<BlockId>,
+        to_block: Option<BlockId>,
+        address: Option<Felt>,
+        keys: Option<Vec<Vec<Felt>>>,
+    ) -> Result<Vec<core_types::EmittedEvent>, ProviderError> {
+        let to_send = Instruction::Cheat(CheatInstruction::GetAllEvents {
+            from_block,
+            to_block,
+            address,
+            keys,
+        });
+
+        let res = self.send_instruction_recv_outcome(to_send).await?;
+
+        if let Outcome::Cheat(CheatcodesOutcome::GetAllEvents(events)) = res {
+            Ok(events)
         } else {
             Err(ProviderError::RateLimited)
         }

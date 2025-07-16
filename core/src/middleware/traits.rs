@@ -47,7 +47,7 @@ pub trait Middleware {
     fn connection(&self) -> &Connection;
 
     /// Creates a new block in the underlying provider.
-    async fn create_block(&self) -> Result<(), ProviderError> {
+    async fn create_block(&self) -> Result<Felt, ProviderError> {
         self.inner().create_block().await
     }
 
@@ -441,6 +441,19 @@ pub trait Middleware {
     ) -> Result<core_types::EventsPage, ProviderError> {
         self.inner()
             .get_events(filter, continuation_token, chunk_size)
+            .await
+    }
+
+    /// Fetches all events based on the provided filter.
+    async fn get_all_events(
+        &self,
+        from_block: Option<BlockId>,
+        to_block: Option<BlockId>,
+        address: Option<Felt>,
+        keys: Option<Vec<Vec<Felt>>>,
+    ) -> Result<Vec<core_types::EmittedEvent>, ProviderError> {
+        self.inner()
+            .get_all_events(from_block, to_block, address, keys)
             .await
     }
 

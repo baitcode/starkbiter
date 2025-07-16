@@ -61,6 +61,7 @@ use starknet_devnet_types::{
     traits::HashProducer,
 };
 use tokio::sync::broadcast::channel;
+use tracing::debug;
 
 use super::*;
 use crate::tokens::get_token_data;
@@ -1412,7 +1413,17 @@ async fn process_instructions(
 
                     event_broadcaster.send(converted).unwrap_or_default();
 
-                    let outcome = Ok(Outcome::Cheat(instruction::CheatcodesOutcome::CreateBlock));
+                    let latest_block = starknet.get_latest_block().unwrap();
+
+                    trace!(
+                        "Environment. Created latest block: {:?}, {:?}",
+                        latest_block.block_hash(),
+                        latest_block.block_number(),
+                    );
+
+                    let outcome = Ok(Outcome::Cheat(instruction::CheatcodesOutcome::CreateBlock(
+                        latest_block.block_hash(),
+                    )));
                     if let Err(e) = sender.send(outcome) {
                         error!("Failed to send CreateBlock outcome: {:?}", e);
                         stop = true;
@@ -1771,7 +1782,7 @@ async fn process_instructions(
                         {
                             trace!(
                                 "Skipping transaction with reverted execution result: {:?}",
-                                tx
+                                tx.receipt.transaction_hash()
                             );
                             continue;
                         };
@@ -1792,7 +1803,6 @@ async fn process_instructions(
                             });
 
                             if !has_events {
-                                trace!("No events that match filter. Ignoring the transaction.");
                                 ignored_tx += 1;
                                 continue;
                             }
@@ -1904,7 +1914,6 @@ async fn process_instructions(
                                     .map(|res| res.0)
                             }
                             _ => {
-                                trace!("TX: {:?}", tx);
                                 ignored_tx += 1;
                                 Ok(core_types::Felt::ZERO)
                             }
@@ -1914,15 +1923,17 @@ async fn process_instructions(
                             error!("Failed to add transaction: {:?}", e);
                             failed_tx += 1;
                         } else {
-                            info!(
-                                "Transaction processed: {} of {}. Ignored: {}",
-                                added_tx,
-                                txs.len(),
-                                ignored_tx
-                            );
                             added_tx += 1;
                         }
                     }
+
+                    debug!(
+                        "Transaction processed: {} of {}. Ignored: {}. Failed: {}",
+                        added_tx,
+                        txs.len(),
+                        ignored_tx,
+                        failed_tx
+                    );
 
                     let outcome = Ok(Outcome::Cheat(
                         instruction::CheatcodesOutcome::ReplayBlockWithTxs(
@@ -1986,6 +1997,47 @@ async fn process_instructions(
                     )));
                     if let Err(e) = sender.send(outcome) {
                         error!("Failed to send GetBalance outcome: {:?}", e);
+                        stop = true;
+                    }
+                }
+                instruction::CheatInstruction::GetAllEvents {
+                    from_block,
+                    to_block,
+                    address,
+                    keys,
+                } => {
+                    trace!("Environment. Received GetAllEvents instruction");
+
+                    let maybe_contract_address =
+                        address.map(|addr| ContractAddress::new(addr).unwrap());
+
+                    let events = starknet.get_unlimited_events(
+                        *from_block,
+                        *to_block,
+                        maybe_contract_address,
+                        keys.clone(),
+                    );
+
+                    if let Err(e) = events {
+                        if let Err(e) = sender.send(Err(StarkbiterCoreError::DevnetError(e))) {
+                            error!("Failed to send GetAllEvents outcome: {:?}", e);
+                            stop = true;
+                        }
+                        continue;
+                    }
+
+                    let converted = events
+                        .unwrap()
+                        .iter()
+                        .map(core_types::EmittedEvent::from)
+                        .collect();
+
+                    let outcome = Ok(Outcome::Cheat(
+                        instruction::CheatcodesOutcome::GetAllEvents(converted),
+                    ));
+
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send GetAllEvents outcome: {:?}", e);
                         stop = true;
                     }
                 }

@@ -386,9 +386,9 @@ async fn test_replay_block_transactions_containing_ekubo_swaps() {
             "0x00000005dd3d2f4429af886cd1a3b08289dbcea99a294197e9eb43b0e0325b4b",
         ),
         // Selector for: Swapped
-        keys: vec![Felt::from_hex_unchecked(
+        keys: vec![vec![Felt::from_hex_unchecked(
             "0x157717768aca88da4ac4279765f09f4d0151823d573537fbbeb950cdbd9a870",
-        )],
+        )]],
     };
 
     let (added, ignored, failed) = client
@@ -405,8 +405,3 @@ async fn test_replay_block_transactions_containing_ekubo_swaps() {
 
 // TODO: add impersonation
 // TODO: logging?
-// Finished the replay tx functionality getting back to python bindings. There
-// should not be any big rust changes from now on. Well, I didn't touch on
-// non-blocking event polling feature yet, postponed it for later, as it's
-// non-blocking ;). I'll try to do video tomo. But feels like I most likely do
-// it on Saturday.

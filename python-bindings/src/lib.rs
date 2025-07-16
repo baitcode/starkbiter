@@ -36,6 +36,8 @@ fn python_bindings(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(middleware::create_subscription, m)?)?;
     m.add_function(wrap_pyfunction!(middleware::poll_subscription, m)?)?;
 
+    m.add_function(wrap_pyfunction!(middleware::create_block, m)?)?;
+
     m.add_class::<environment::ForkParams>()?;
     m.add_class::<middleware::BlockId>()?;
     m.add_class::<middleware::Call>()?;

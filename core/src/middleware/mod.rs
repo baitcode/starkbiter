@@ -135,7 +135,7 @@ impl Middleware for StarkbiterMiddleware {
         &self.connection
     }
 
-    async fn create_block(&self) -> Result<(), ProviderError> {
+    async fn create_block(&self) -> Result<Felt, ProviderError> {
         self.connection().create_block().await
     }
 
@@ -673,6 +673,18 @@ impl Middleware for StarkbiterMiddleware {
             .replay_block_with_txs(block_id, filters, override_nonce)
             .await
     }
+
+    async fn get_all_events(
+        &self,
+        from_block: Option<BlockId>,
+        to_block: Option<BlockId>,
+        address: Option<Felt>,
+        keys: Option<Vec<Vec<Felt>>>,
+    ) -> Result<Vec<core_types::EmittedEvent>, ProviderError> {
+        self.connection()
+            .get_all_events(from_block, to_block, address, keys)
+            .await
+    }
 }
 
 struct ExampleLoggingMiddleware<T: Middleware> {
@@ -691,7 +703,7 @@ impl<T: Middleware + Send + Sync> Middleware for ExampleLoggingMiddleware<T> {
         self.inner.connection()
     }
 
-    async fn create_block(&self) -> Result<(), ProviderError> {
+    async fn create_block(&self) -> Result<Felt, ProviderError> {
         trace!("Creating a block in ExampleLoggingMiddleware");
         let res = self.inner().create_block().await;
         trace!("done Creating a block in ExampleLoggingMiddleware");

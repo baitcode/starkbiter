@@ -45,6 +45,13 @@ pub trait CheatingProvider {
         B: Into<BigUint> + Send + Sync,
         T: Into<TokenId> + Send + Sync;
 
+    /// Get token balance of the given address. Uses smallest denomination of
+    /// the token.
+    async fn get_balance<C, T>(&self, receiver: C, token: T) -> Result<BigUint, ProviderError>
+    where
+        C: Into<Felt> + Send + Sync,
+        T: Into<TokenId> + Send + Sync;
+
     /// Registers address for impersonation. Means that validation step for all
     /// transactions from that address will be skipped.
     async fn impersonate<C>(&self, address: C) -> Result<(), ProviderError>

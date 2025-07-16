@@ -24,9 +24,9 @@ use crate::tokens::TokenId;
 pub struct EventFilter {
     /// Matched events emitted by this address
     pub from_address: Felt,
-    /// Matches events with those keys: [selector, key1, key2]
+    /// Matches events against keys list: vec![vec![selector, key1, key2]]
     /// selector is a keccak hash from event name.
-    pub keys: Vec<Felt>,
+    pub keys: Vec<Vec<Felt>>,
 }
 
 /// Instructions that can be sent to the [`Environment`] via the [`Socket`].
@@ -398,6 +398,13 @@ pub enum CheatInstruction {
         /// The token symbol or identifier.
         token: TokenId, // need to create classifier
     },
+    /// Fetches token balance for an account.
+    GetBalance {
+        /// The address to check.
+        address: Felt,
+        /// The token symbol or identifier.
+        token: TokenId, // need to create classifier
+    },
     /// Starts impersonation. Skips transaction validation if sent on behalf of
     /// an account with impersonated address.
     Impersonate {
@@ -462,6 +469,8 @@ pub enum CheatcodesOutcome {
     L1Message(Felt),
     /// Indicates a balance was added.
     TopUpBalance,
+    /// Returns amount of token owned.
+    GetBalance(BigUint),
     /// Indicates the address was impersonated.
     Impersonate,
     /// Indicates the impersonation was stopped.

@@ -1779,16 +1779,15 @@ async fn process_instructions(
                         if let Some(filters) = filters {
                             let has_events = tx.receipt.events().iter().any(|e| {
                                 filters.iter().any(|f| {
-                                    let res = e.from_address == f.from_address && e.keys == f.keys;
-                                    if res {
-                                        trace!(
-                                            "Hash: {:?}, Event: {:?}, Filter: {:?}",
-                                            tx.receipt.transaction_hash(),
-                                            e,
-                                            f
-                                        );
+                                    if e.from_address != f.from_address {
+                                        return false;
                                     }
-                                    res
+
+                                    if !f.keys.iter().any(|keys| e.keys == *keys) {
+                                        return false;
+                                    }
+
+                                    true
                                 })
                             });
 
@@ -1933,6 +1932,60 @@ async fn process_instructions(
 
                     if let Err(e) = sender.send(outcome) {
                         error!("Failed to send Cheating ReplayBlockWithTxs result: {:?}", e);
+                        stop = true;
+                    }
+                }
+                instruction::CheatInstruction::GetBalance { address, token } => {
+                    trace!(
+                        "Environment. Received GetBalance instruction: address: {:?}, token: {:?}",
+                        address,
+                        token
+                    );
+
+                    let state = starknet.get_state();
+
+                    let address = ContractAddress::new(*address);
+                    if let Err(e) = address {
+                        let outcome = Err(StarkbiterCoreError::InternalError(e.to_string()));
+                        if let Err(e) = sender.send(outcome) {
+                            error!("Failed to send GetBalance outcome: {:?}", e);
+                            stop = true;
+                        }
+
+                        continue;
+                    }
+
+                    let token_data = get_token_data(&starknet_config.chain_id, token);
+                    if let Err(e) = token_data {
+                        let outcome = Err(StarkbiterCoreError::InternalError(e.to_string()));
+                        if let Err(e) = sender.send(outcome) {
+                            error!("Failed to send GetBalance outcome: {:?}", e);
+                            stop = true;
+                        }
+
+                        continue;
+                    }
+
+                    let result = utils::read_tokens_in_erc20_contract(
+                        state,
+                        token_data.unwrap().l2_token_address,
+                        address.unwrap().into(),
+                    );
+
+                    if let Err(e) = result {
+                        if let Err(e) = sender.send(Err(*e)) {
+                            error!("Failed to send GetBalance outcome: {:?}", e);
+                            stop = true;
+                        }
+
+                        continue;
+                    }
+
+                    let outcome = Ok(Outcome::Cheat(instruction::CheatcodesOutcome::GetBalance(
+                        result.unwrap(),
+                    )));
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send GetBalance outcome: {:?}", e);
                         stop = true;
                     }
                 }

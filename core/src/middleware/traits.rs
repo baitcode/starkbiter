@@ -132,6 +132,15 @@ pub trait Middleware {
         self.inner().top_up_balance(receiver, amount, token).await
     }
 
+    /// Get token balance of the given. Uses smallest denomination of the token.
+    async fn get_balance<C, T>(&self, receiver: C, token: T) -> Result<BigUint, ProviderError>
+    where
+        C: Into<Felt> + Send + Sync,
+        T: Into<TokenId> + Send + Sync,
+    {
+        self.inner().get_balance(receiver, token).await
+    }
+
     /// Registers address for impersonation. Means that validation step for all
     /// transactions from that address will be skipped.
     async fn impersonate<C>(&self, address: C) -> Result<(), ProviderError>

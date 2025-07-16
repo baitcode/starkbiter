@@ -9,7 +9,7 @@ use futures::{stream::Peekable, Stream, StreamExt};
 use num_bigint::BigInt;
 use pyo3::prelude::*;
 use starkbiter_core::{
-    environment::instruction,
+    environment::instruction::{self},
     middleware::{connection::Connection, traits::Middleware, StarkbiterMiddleware},
     tokens::TokenId,
 };
@@ -403,6 +403,52 @@ pub fn top_up_balance<'p>(
 }
 
 #[pyfunction]
+pub fn get_balance<'p>(
+    py: Python<'p>,
+    middleware_id: &str,
+    address: &str,
+    token: &str,
+) -> PyResult<&'p PyAny> {
+    let middleware_id_local = middleware_id.to_string();
+    let address_local = address.to_string();
+    let token_local = token.to_string();
+
+    pyo3_asyncio::tokio::future_into_py::<_, _>(py, async move {
+        let middlewares_lock = middlewares().lock().await;
+        let maybe_middleware = middlewares_lock.get(&middleware_id_local);
+
+        if maybe_middleware.is_none() {
+            return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                "Middleware not found for: {:?}",
+                &middleware_id_local
+            )));
+        }
+
+        let token = TokenId::try_from(token_local.as_str()).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Invalid token ID provided: {}",
+                e
+            ))
+        })?;
+
+        let address = types::Felt::from_hex(&address_local).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Can't convert hex to contract address: {:?} {:?}",
+                &address_local, e
+            ))
+        })?;
+
+        let middleware = maybe_middleware.unwrap();
+
+        let result = middleware.get_balance(address, token).await.map_err(|e| {
+            PyErr::new::<crate::ProviderError, _>(format!("Failed to top up balance: {}", e))
+        })?;
+
+        Ok(result)
+    })
+}
+
+#[pyfunction]
 pub fn set_storage<'p>(
     py: Python<'p>,
     middleware_id: &str,
@@ -775,10 +821,128 @@ pub fn poll_subscription<'p>(py: Python<'p>, subscription_id: &str) -> PyResult<
 #[derive(Clone)]
 pub struct EventFilter {
     #[pyo3(get, set)]
+    from_block_number: Option<u64>,
+    #[pyo3(get, set)]
+    from_block_tag: Option<String>,
+    #[pyo3(get, set)]
+    from_block_hash: Option<String>,
+
+    #[pyo3(get, set)]
+    to_block_number: Option<u64>,
+    #[pyo3(get, set)]
+    to_block_tag: Option<String>,
+    #[pyo3(get, set)]
+    to_block_hash: Option<String>,
+
+    #[pyo3(get, set)]
     pub from_address: String,
 
     #[pyo3(get, set)]
-    pub keys: Vec<String>,
+    pub keys: Vec<Vec<String>>,
+}
+
+#[allow(clippy::too_many_arguments)]
+#[allow(non_local_definitions)]
+#[pymethods]
+impl EventFilter {
+    #[new]
+    fn new(
+        from_address: &str,
+        keys: Vec<Vec<&str>>,
+        // TODO(baitcode): for some reason pyo3 does
+        // not support using python objects
+        // in python objects
+        from_block_number: Option<u64>,
+        from_block_tag: Option<String>,
+        from_block_hash: Option<String>,
+
+        to_block_number: Option<u64>,
+        to_block_tag: Option<String>,
+        to_block_hash: Option<String>,
+    ) -> Self {
+        let keys = keys
+            .iter()
+            .map(|v| v.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+            .collect::<Vec<_>>();
+
+        EventFilter {
+            from_address: from_address.to_string(),
+            keys,
+
+            from_block_number,
+            from_block_tag,
+            from_block_hash,
+
+            to_block_number,
+            to_block_tag,
+            to_block_hash,
+        }
+    }
+}
+
+impl From<&EventFilter> for instruction::EventFilter {
+    fn from(value: &EventFilter) -> Self {
+        let keys = value
+            .keys
+            .iter()
+            .map(|v| {
+                v.iter()
+                    .map(|s| types::Felt::from_hex_unchecked(s))
+                    .collect()
+            })
+            .collect();
+
+        instruction::EventFilter {
+            from_address: types::Felt::from_hex_unchecked(&value.from_address),
+            keys,
+        }
+    }
+}
+
+impl From<&EventFilter> for types::EventFilter {
+    fn from(value: &EventFilter) -> Self {
+        let keys = value
+            .keys
+            .iter()
+            .map(|v| {
+                Some(
+                    v.iter()
+                        .map(|s| types::Felt::from_hex_unchecked(s))
+                        .collect(),
+                )
+            })
+            .collect();
+
+        let from_block = match (
+            value.from_block_number,
+            &value.from_block_tag,
+            &value.from_block_hash,
+        ) {
+            (Some(number), _, _) => Some(BlockId::from_number(number)),
+            (None, Some(tag), _) => Some(BlockId::from_tag(tag)),
+            (None, None, Some(hash)) => Some(BlockId::from_hash(hash)),
+            _ => None,
+        };
+
+        let to_block = match (
+            value.to_block_number,
+            &value.to_block_tag,
+            &value.to_block_hash,
+        ) {
+            (Some(number), _, _) => Some(BlockId::from_number(number)),
+            (None, Some(tag), _) => Some(BlockId::from_tag(tag)),
+            (None, None, Some(hash)) => Some(BlockId::from_hash(hash)),
+            _ => None,
+        };
+
+        // TODO(baitcode): validate block id
+        types::EventFilter {
+            from_block: from_block.map(|b| b.try_into().unwrap()),
+            to_block: to_block.map(|b| b.try_into().unwrap()),
+            address: Some(types::Felt::from_hex_unchecked(&value.from_address)),
+            keys,
+        }
+    }
 }
 
 #[pyfunction]
@@ -809,19 +973,8 @@ pub fn replay_block_with_txs<'p>(
         })?;
 
         // TODO(baitcode): validate event filters
-        let has_events = has_events.map(|filters| {
-            filters
-                .iter()
-                .map(|f| instruction::EventFilter {
-                    from_address: types::Felt::from_hex_unchecked(&f.from_address),
-                    keys: f
-                        .keys
-                        .iter()
-                        .map(|s| types::Felt::from_hex_unchecked(s))
-                        .collect(),
-                })
-                .collect::<Vec<_>>()
-        });
+        let has_events =
+            has_events.map(|filters| filters.iter().map(|f| f.into()).collect::<Vec<_>>());
 
         middleware
             .replay_block_with_txs(block_id, has_events, override_nonce.unwrap_or(false))
@@ -831,5 +984,68 @@ pub fn replay_block_with_txs<'p>(
             })?;
 
         Ok(())
+    })
+}
+
+#[pyfunction]
+pub fn get_block_events<'p>(
+    py: Python<'p>,
+    middleware_id: &str,
+    filter: EventFilter,
+) -> PyResult<&'p PyAny> {
+    let middleware_id_local = middleware_id.to_string();
+
+    pyo3_asyncio::tokio::future_into_py::<_, _>(py, async move {
+        let middlewares_lock = middlewares().lock().await;
+        let maybe_middleware = middlewares_lock.get(&middleware_id_local);
+
+        if maybe_middleware.is_none() {
+            return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                "Middleware not found for: {:?}",
+                &middleware_id_local
+            )));
+        }
+
+        let middleware = maybe_middleware.unwrap();
+
+        let mut results: Vec<Event> = vec![];
+
+        let mut continuation_token = Option::None;
+
+        loop {
+            let local_filter = filter.clone();
+
+            let page = middleware
+                // TODO(baitcode): pass filter by reference
+                .get_events(
+                    types::EventFilter::from(&local_filter),
+                    continuation_token,
+                    100,
+                )
+                .await
+                .map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                        "Can't get events: {:?}",
+                        e
+                    ))
+                })?;
+
+            let mut page_events = page
+                .events
+                .iter()
+                .map(|e| e.try_into())
+                .filter_map(|e| e.ok())
+                .collect();
+
+            results.append(&mut page_events);
+
+            if let Some(token) = page.continuation_token {
+                continuation_token = Some(token)
+            } else {
+                break;
+            }
+        }
+
+        Ok(results)
     })
 }

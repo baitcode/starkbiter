@@ -196,6 +196,25 @@ impl CheatingProvider for Connection {
         }
     }
 
+    async fn get_balance<C, T>(&self, receiver: C, token: T) -> Result<BigUint, ProviderError>
+    where
+        C: Into<Felt> + Send + Sync,
+        T: Into<TokenId> + Send + Sync,
+    {
+        let to_send = Instruction::Cheat(CheatInstruction::GetBalance {
+            address: receiver.into(),
+            token: token.into(),
+        });
+
+        let res = self.send_instruction_recv_outcome(to_send).await?;
+
+        if let Outcome::Cheat(CheatcodesOutcome::GetBalance(value)) = res {
+            Ok(value)
+        } else {
+            Err(ProviderError::RateLimited)
+        }
+    }
+
     async fn impersonate<C>(&self, address: C) -> Result<(), ProviderError>
     where
         C: AsRef<Felt> + Send + Sync,

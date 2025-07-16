@@ -238,6 +238,14 @@ impl Middleware for StarkbiterMiddleware {
             .await
     }
 
+    async fn get_balance<C, T>(&self, receiver: C, token: T) -> Result<BigUint, ProviderError>
+    where
+        C: Into<Felt> + Send + Sync,
+        T: Into<TokenId> + Send + Sync,
+    {
+        self.connection().get_balance(receiver, token).await
+    }
+
     async fn set_next_block_gas<G>(
         &self,
         gas_modification_request: G,

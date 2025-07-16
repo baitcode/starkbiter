@@ -36,8 +36,8 @@ impl ForkParams {
 }
 
 #[pyfunction]
-pub fn set_tracing() {
-    std::env::set_var("RUST_LOG", "trace");
+pub fn set_tracing(levels: &str) {
+    std::env::set_var("RUST_LOG", levels);
     let _ = tracing_subscriber::fmt::try_init();
 }
 

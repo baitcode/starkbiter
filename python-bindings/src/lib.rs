@@ -20,6 +20,7 @@ fn python_bindings(_py: Python, m: &PyModule) -> PyResult<()> {
 
     m.add_function(wrap_pyfunction!(middleware::account_execute, m)?)?;
     m.add_function(wrap_pyfunction!(middleware::top_up_balance, m)?)?;
+    m.add_function(wrap_pyfunction!(middleware::get_balance, m)?)?;
     m.add_function(wrap_pyfunction!(middleware::set_gas_price, m)?)?;
     m.add_function(wrap_pyfunction!(middleware::set_storage, m)?)?;
     m.add_function(wrap_pyfunction!(middleware::get_storage, m)?)?;
@@ -29,12 +30,17 @@ fn python_bindings(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(middleware::impersonate, m)?)?;
     m.add_function(wrap_pyfunction!(middleware::stop_impersonate, m)?)?;
 
+    m.add_function(wrap_pyfunction!(middleware::get_block_events, m)?)?;
+
+    // TODO(baitcode): delete subscriptions
     m.add_function(wrap_pyfunction!(middleware::create_subscription, m)?)?;
     m.add_function(wrap_pyfunction!(middleware::poll_subscription, m)?)?;
 
     m.add_class::<environment::ForkParams>()?;
     m.add_class::<middleware::BlockId>()?;
     m.add_class::<middleware::Call>()?;
+    m.add_class::<middleware::Event>()?;
+    m.add_class::<middleware::EventFilter>()?;
 
     let contracts = PyModule::new(m.py(), "contracts")?;
     m.add_submodule(contracts)?;

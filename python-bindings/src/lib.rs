@@ -19,6 +19,10 @@ fn python_bindings(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(middleware::create_mock_account, m)?)?;
 
     m.add_function(wrap_pyfunction!(middleware::account_execute, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        middleware::get_deployed_contract_address,
+        m
+    )?)?;
     m.add_function(wrap_pyfunction!(middleware::top_up_balance, m)?)?;
     m.add_function(wrap_pyfunction!(middleware::get_balance, m)?)?;
     m.add_function(wrap_pyfunction!(middleware::set_gas_price, m)?)?;
@@ -37,6 +41,7 @@ fn python_bindings(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(middleware::poll_subscription, m)?)?;
 
     m.add_function(wrap_pyfunction!(middleware::create_block, m)?)?;
+    m.add_function(wrap_pyfunction!(middleware::get_token, m)?)?;
 
     m.add_class::<environment::ForkParams>()?;
     m.add_class::<middleware::BlockId>()?;

@@ -291,14 +291,6 @@ async fn test_ekubo_swap_1eth_for_usdc_with_swapper() {
         "EKUBO ETH balance should be one increase by 0.1 eth after swap"
     );
 
-    // To swap I need.
-    // Fund swapper contract
-    // Exeute swap
-    // Check my balance.
-
-    // let swapper = contracts_swapper::ContractsSwapper::new(swapper_address,
-    // &account);
-
     let _ = env.stop();
 }
 

@@ -5073,7 +5073,7 @@ dependencies = [
 
 [[package]]
 name = "python-bindings"
-version = "0.1.18"
+version = "0.1.19"
 dependencies = [
  "futures",
  "num-bigint",

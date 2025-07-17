@@ -10,6 +10,7 @@ mod middleware;
 fn python_bindings(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(environment::set_tracing, m)?)?;
     m.add_function(wrap_pyfunction!(environment::create_environment, m)?)?;
+    m.add_function(wrap_pyfunction!(environment::get_token, m)?)?;
 
     m.add_function(wrap_pyfunction!(middleware::create_middleware, m)?)?;
 
@@ -39,9 +40,7 @@ fn python_bindings(_py: Python, m: &PyModule) -> PyResult<()> {
     // TODO(baitcode): delete subscriptions
     m.add_function(wrap_pyfunction!(middleware::create_subscription, m)?)?;
     m.add_function(wrap_pyfunction!(middleware::poll_subscription, m)?)?;
-
     m.add_function(wrap_pyfunction!(middleware::create_block, m)?)?;
-    m.add_function(wrap_pyfunction!(middleware::get_token, m)?)?;
 
     m.add_class::<environment::ForkParams>()?;
     m.add_class::<middleware::BlockId>()?;

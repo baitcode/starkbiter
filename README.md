@@ -30,7 +30,6 @@ The Starkbiter workspace has five crates:
 
 ## WIP
 
-- [ ] non-blocking event polling
 - [x] bin docs
 - [x] core docs
 - [x] main readme
@@ -39,17 +38,24 @@ The Starkbiter workspace has five crates:
     - [ ] usage
     - [x] index
 - [ ] benchmarks
-- [ ] python bindings
+- [x] python bindings
 - [x] more test cases
-- [ ] coverage report
 - [x] support for replaying mainnet transactions mixing them with simulated ones.
 - [x] github workflows revival
-- [ ] contribute to cainome and remove fork dep
-- [ ] contribute to starknet-rs and remove fork dep + Fix generic Runtime error with more specific errors from within Provider
-- [ ] contribute to starknet-devnet and remove fork dep
 - [x] test that toml config parameters for forking work
 - [x] contract execution logging and traces from Devnet
-- [ ] test for simultaneous connection usage by different contracts.
+- [x] test for simultaneous connection usage by different contracts.
+- [ ] contribute to cainome and remove fork dep
+- [ ] contribute to starknet-rs and remove fork dep + Fix generic Runtime error with more specific errors from within Provider
+- [ ] Contribute to starknet-devnet and remove fork dep
+- [ ] Coverage report
+- [ ] Python binding add validation (last minute changes were dirty)
+- [ ] Type conversions. need to replace Into with From
+- [ ] Type conversions. remove Clone where possible
+- [ ] Environment. Move handler processing logic in separate files.
+- [ ] Make explicit naming for methods that only work with local data and ones that work against remote state
+- [ ] Add API to preload state and save it to file. (like EKUBO core contract storage)
+- [ ] Test approach to set local nonce before adding transaction to bypass validation (less remote calls)
 
 
 ## Book

@@ -13,6 +13,59 @@ use starknet_devnet_types::{
 
 use crate::errors::StarkbiterCoreError;
 
+fn read_biguint(
+    state: &StarknetState,
+    address: ContractAddress,
+    low_key: Felt,
+) -> Result<BigUint, StarkbiterCoreError> {
+    let low_key = StorageKey::try_from(low_key)
+        .map_err(|e| StarkbiterCoreError::DevnetError(DevnetError::StarknetApiError(e)))?;
+
+    let high_key = low_key
+        .next_storage_key()
+        .map_err(|e| StarkbiterCoreError::DevnetError(DevnetError::StarknetApiError(e)))?;
+
+    let low_val = state
+        .get_storage_at(address, low_key)
+        .map_err(|e| StarkbiterCoreError::DevnetError(DevnetError::BlockifierStateError(e)))?;
+
+    let high_val = state
+        .get_storage_at(address, high_key)
+        .map_err(|e| StarkbiterCoreError::DevnetError(DevnetError::BlockifierStateError(e)))?;
+
+    Ok(join_felts(&high_val, &low_val))
+}
+
+fn write_biguint(
+    state: &mut StarknetState,
+    address: ContractAddress,
+    low_key: Felt,
+    value: BigUint,
+) -> Result<(), StarkbiterCoreError> {
+    let low_key = StorageKey::try_from(low_key)
+        .map_err(|e| StarkbiterCoreError::DevnetError(DevnetError::StarknetApiError(e)))?;
+
+    let high_key = low_key
+        .next_storage_key()
+        .map_err(|e| StarkbiterCoreError::DevnetError(DevnetError::StarknetApiError(e)))?;
+
+    let (high_val, low_val) = split_biguint(value);
+
+    state
+        .state
+        .state
+        .set_storage_at(address, low_key, low_val)
+        .map_err(|e| StarkbiterCoreError::DevnetError(DevnetError::BlockifierStateError(e)))?;
+
+    state
+        .state
+        .state
+        .set_storage_at(address, high_key, high_val)
+        .map_err(|e| StarkbiterCoreError::DevnetError(DevnetError::BlockifierStateError(e)))?;
+
+    Ok(())
+}
+
 /// This method utilizes direct access to Starknet state to mint tokens in an
 /// ERC20 contract.
 pub fn mint_tokens_in_erc20_contract(
@@ -23,59 +76,6 @@ pub fn mint_tokens_in_erc20_contract(
 ) -> Result<(), Box<StarkbiterCoreError>> {
     let contract_address = ContractAddress::try_from(contract_address)
         .map_err(|e| StarkbiterCoreError::DevnetError(DevnetError::StarknetApiError(e)))?;
-
-    fn read_biguint(
-        state: &StarknetState,
-        address: ContractAddress,
-        low_key: Felt,
-    ) -> Result<BigUint, StarkbiterCoreError> {
-        let low_key = StorageKey::try_from(low_key)
-            .map_err(|e| StarkbiterCoreError::DevnetError(DevnetError::StarknetApiError(e)))?;
-
-        let high_key = low_key
-            .next_storage_key()
-            .map_err(|e| StarkbiterCoreError::DevnetError(DevnetError::StarknetApiError(e)))?;
-
-        let low_val = state
-            .get_storage_at(address, low_key)
-            .map_err(|e| StarkbiterCoreError::DevnetError(DevnetError::BlockifierStateError(e)))?;
-
-        let high_val = state
-            .get_storage_at(address, high_key)
-            .map_err(|e| StarkbiterCoreError::DevnetError(DevnetError::BlockifierStateError(e)))?;
-
-        Ok(join_felts(&high_val, &low_val))
-    }
-
-    fn write_biguint(
-        state: &mut StarknetState,
-        address: ContractAddress,
-        low_key: Felt,
-        value: BigUint,
-    ) -> Result<(), StarkbiterCoreError> {
-        let low_key = StorageKey::try_from(low_key)
-            .map_err(|e| StarkbiterCoreError::DevnetError(DevnetError::StarknetApiError(e)))?;
-
-        let high_key = low_key
-            .next_storage_key()
-            .map_err(|e| StarkbiterCoreError::DevnetError(DevnetError::StarknetApiError(e)))?;
-
-        let (high_val, low_val) = split_biguint(value);
-
-        state
-            .state
-            .state
-            .set_storage_at(address, low_key, low_val)
-            .map_err(|e| StarkbiterCoreError::DevnetError(DevnetError::BlockifierStateError(e)))?;
-
-        state
-            .state
-            .state
-            .set_storage_at(address, high_key, high_val)
-            .map_err(|e| StarkbiterCoreError::DevnetError(DevnetError::BlockifierStateError(e)))?;
-
-        Ok(())
-    }
 
     let recepient_balance_key = get_storage_var_address("ERC20_balances", &[recipient])
         .map_err(|e| StarkbiterCoreError::InternalError(e.to_string()))?;
@@ -102,4 +102,20 @@ pub fn mint_tokens_in_erc20_contract(
     )?;
 
     Ok(())
+}
+
+pub fn read_tokens_in_erc20_contract(
+    state: &mut StarknetState,
+    contract_address: Felt,
+    recipient: Felt,
+) -> Result<BigUint, Box<StarkbiterCoreError>> {
+    let contract_address = ContractAddress::try_from(contract_address)
+        .map_err(|e| StarkbiterCoreError::DevnetError(DevnetError::StarknetApiError(e)))?;
+
+    let recepient_balance_key = get_storage_var_address("ERC20_balances", &[recipient])
+        .map_err(|e| StarkbiterCoreError::InternalError(e.to_string()))?;
+
+    let recepient_balance = read_biguint(state, contract_address, recepient_balance_key)?;
+
+    Ok(recepient_balance)
 }

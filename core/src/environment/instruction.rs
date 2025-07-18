@@ -24,9 +24,9 @@ use crate::tokens::TokenId;
 pub struct EventFilter {
     /// Matched events emitted by this address
     pub from_address: Felt,
-    /// Matches events with those keys: [selector, key1, key2]
+    /// Matches events against keys list: vec![vec![selector, key1, key2]]
     /// selector is a keccak hash from event name.
-    pub keys: Vec<Felt>,
+    pub keys: Vec<Vec<Felt>>,
 }
 
 /// Instructions that can be sent to the [`Environment`] via the [`Socket`].
@@ -398,6 +398,13 @@ pub enum CheatInstruction {
         /// The token symbol or identifier.
         token: TokenId, // need to create classifier
     },
+    /// Fetches token balance for an account.
+    GetBalance {
+        /// The address to check.
+        address: Felt,
+        /// The token symbol or identifier.
+        token: TokenId, // need to create classifier
+    },
     /// Starts impersonation. Skips transaction validation if sent on behalf of
     /// an account with impersonated address.
     Impersonate {
@@ -447,6 +454,21 @@ pub enum CheatInstruction {
         /// Set to true to recalculate the nonce for the transactions
         override_nonce: bool,
     },
+
+    /// Fetches all events from block in one go. Only scans local blocks
+    GetAllEvents {
+        /// Block id of a the block to fetch events from. If `None`, fetches all
+        /// events since fork start.
+        from_block: Option<core_types::BlockId>,
+        /// Block id to fetch events till. If `None`, fetches all events from
+        /// from_block
+        to_block: Option<core_types::BlockId>,
+        /// The address that emitted events to filter events by. If `None`,
+        /// fetches all events.
+        address: Option<Felt>,
+        /// The keys to filter events by. If `None`, fetches all events.
+        keys: Option<Vec<Vec<Felt>>>,
+    },
 }
 
 /// Return values of applying cheatcodes.
@@ -456,12 +478,14 @@ pub enum CheatcodesOutcome {
     DeclareContract(Felt),
     /// Returns the contract address of the created account.
     CreateAccount(Felt),
-    /// Indicates a block was created.
-    CreateBlock,
+    /// Indicates a block was created. Returns latest block hash.
+    CreateBlock(Felt),
     /// Returns the tx_hash of L1 message transaction.
     L1Message(Felt),
     /// Indicates a balance was added.
     TopUpBalance,
+    /// Returns amount of token owned.
+    GetBalance(BigUint),
     /// Indicates the address was impersonated.
     Impersonate,
     /// Indicates the impersonation was stopped.
@@ -478,4 +502,7 @@ pub enum CheatcodesOutcome {
     /// Returns numbers of transactions from the origin block that were (added,
     /// ignored, failed)
     ReplayBlockWithTxs(usize, usize, usize),
+
+    /// Returns all events matching the filter.
+    GetAllEvents(Vec<core_types::EmittedEvent>),
 }

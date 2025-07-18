@@ -18,10 +18,9 @@ pub static ERC20_CONTRACT_SIERRA: &str =
 
 pub static ARGENT_V040_SIERRA: &str = include_str!("../contracts/ArgentAccount.0.4.0.class.json");
 
-pub static SWAPPER_CONTRACT_SIERRA: &str =
-    include_str!("../contracts/contracts_Swapper.contract_class.json");
+pub static EKUBO_CORE_CONTRACT_SIERRA: &str = include_str!("../contracts/EkuboCore.class.json");
 
-pub static EKUBO_CORE_CONTRACT_SIERRA: &str =
+pub static SWAPPER_CONTRACT_SIERRA: &str =
     include_str!("../contracts/contracts_Swapper.contract_class.json");
 
 pub static EKUBO_ROUTER_LITE_CONTRACT_SIERRA: &str =

@@ -61,6 +61,7 @@ use starknet_devnet_types::{
     traits::HashProducer,
 };
 use tokio::sync::broadcast::channel;
+use tracing::debug;
 
 use super::*;
 use crate::tokens::get_token_data;
@@ -1412,7 +1413,17 @@ async fn process_instructions(
 
                     event_broadcaster.send(converted).unwrap_or_default();
 
-                    let outcome = Ok(Outcome::Cheat(instruction::CheatcodesOutcome::CreateBlock));
+                    let latest_block = starknet.get_latest_block().unwrap();
+
+                    trace!(
+                        "Environment. Created latest block: {:?}, {:?}",
+                        latest_block.block_hash(),
+                        latest_block.block_number(),
+                    );
+
+                    let outcome = Ok(Outcome::Cheat(instruction::CheatcodesOutcome::CreateBlock(
+                        latest_block.block_hash(),
+                    )));
                     if let Err(e) = sender.send(outcome) {
                         error!("Failed to send CreateBlock outcome: {:?}", e);
                         stop = true;
@@ -1771,7 +1782,7 @@ async fn process_instructions(
                         {
                             trace!(
                                 "Skipping transaction with reverted execution result: {:?}",
-                                tx
+                                tx.receipt.transaction_hash()
                             );
                             continue;
                         };
@@ -1779,21 +1790,19 @@ async fn process_instructions(
                         if let Some(filters) = filters {
                             let has_events = tx.receipt.events().iter().any(|e| {
                                 filters.iter().any(|f| {
-                                    let res = e.from_address == f.from_address && e.keys == f.keys;
-                                    if res {
-                                        trace!(
-                                            "Hash: {:?}, Event: {:?}, Filter: {:?}",
-                                            tx.receipt.transaction_hash(),
-                                            e,
-                                            f
-                                        );
+                                    if e.from_address != f.from_address {
+                                        return false;
                                     }
-                                    res
+
+                                    if !f.keys.iter().any(|keys| e.keys == *keys) {
+                                        return false;
+                                    }
+
+                                    true
                                 })
                             });
 
                             if !has_events {
-                                trace!("No events that match filter. Ignoring the transaction.");
                                 ignored_tx += 1;
                                 continue;
                             }
@@ -1905,7 +1914,6 @@ async fn process_instructions(
                                     .map(|res| res.0)
                             }
                             _ => {
-                                trace!("TX: {:?}", tx);
                                 ignored_tx += 1;
                                 Ok(core_types::Felt::ZERO)
                             }
@@ -1915,15 +1923,17 @@ async fn process_instructions(
                             error!("Failed to add transaction: {:?}", e);
                             failed_tx += 1;
                         } else {
-                            info!(
-                                "Transaction processed: {} of {}. Ignored: {}",
-                                added_tx,
-                                txs.len(),
-                                ignored_tx
-                            );
                             added_tx += 1;
                         }
                     }
+
+                    debug!(
+                        "Transaction processed: {} of {}. Ignored: {}. Failed: {}",
+                        added_tx,
+                        txs.len(),
+                        ignored_tx,
+                        failed_tx
+                    );
 
                     let outcome = Ok(Outcome::Cheat(
                         instruction::CheatcodesOutcome::ReplayBlockWithTxs(
@@ -1933,6 +1943,101 @@ async fn process_instructions(
 
                     if let Err(e) = sender.send(outcome) {
                         error!("Failed to send Cheating ReplayBlockWithTxs result: {:?}", e);
+                        stop = true;
+                    }
+                }
+                instruction::CheatInstruction::GetBalance { address, token } => {
+                    trace!(
+                        "Environment. Received GetBalance instruction: address: {:?}, token: {:?}",
+                        address,
+                        token
+                    );
+
+                    let state = starknet.get_state();
+
+                    let address = ContractAddress::new(*address);
+                    if let Err(e) = address {
+                        let outcome = Err(StarkbiterCoreError::InternalError(e.to_string()));
+                        if let Err(e) = sender.send(outcome) {
+                            error!("Failed to send GetBalance outcome: {:?}", e);
+                            stop = true;
+                        }
+
+                        continue;
+                    }
+
+                    let token_data = get_token_data(&starknet_config.chain_id, token);
+                    if let Err(e) = token_data {
+                        let outcome = Err(StarkbiterCoreError::InternalError(e.to_string()));
+                        if let Err(e) = sender.send(outcome) {
+                            error!("Failed to send GetBalance outcome: {:?}", e);
+                            stop = true;
+                        }
+
+                        continue;
+                    }
+
+                    let result = utils::read_tokens_in_erc20_contract(
+                        state,
+                        token_data.unwrap().l2_token_address,
+                        address.unwrap().into(),
+                    );
+
+                    if let Err(e) = result {
+                        if let Err(e) = sender.send(Err(*e)) {
+                            error!("Failed to send GetBalance outcome: {:?}", e);
+                            stop = true;
+                        }
+
+                        continue;
+                    }
+
+                    let outcome = Ok(Outcome::Cheat(instruction::CheatcodesOutcome::GetBalance(
+                        result.unwrap(),
+                    )));
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send GetBalance outcome: {:?}", e);
+                        stop = true;
+                    }
+                }
+                instruction::CheatInstruction::GetAllEvents {
+                    from_block,
+                    to_block,
+                    address,
+                    keys,
+                } => {
+                    trace!("Environment. Received GetAllEvents instruction");
+
+                    let maybe_contract_address =
+                        address.map(|addr| ContractAddress::new(addr).unwrap());
+
+                    let events = starknet.get_unlimited_events(
+                        *from_block,
+                        *to_block,
+                        maybe_contract_address,
+                        keys.clone(),
+                    );
+
+                    if let Err(e) = events {
+                        if let Err(e) = sender.send(Err(StarkbiterCoreError::DevnetError(e))) {
+                            error!("Failed to send GetAllEvents outcome: {:?}", e);
+                            stop = true;
+                        }
+                        continue;
+                    }
+
+                    let converted = events
+                        .unwrap()
+                        .iter()
+                        .map(core_types::EmittedEvent::from)
+                        .collect();
+
+                    let outcome = Ok(Outcome::Cheat(
+                        instruction::CheatcodesOutcome::GetAllEvents(converted),
+                    ));
+
+                    if let Err(e) = sender.send(outcome) {
+                        error!("Failed to send GetAllEvents outcome: {:?}", e);
                         stop = true;
                     }
                 }

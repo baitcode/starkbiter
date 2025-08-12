@@ -43,8 +43,12 @@ starkbiter-macros = { path = "macros" }
 
 uuid = { version = "=1.17.0", features = ["v4"] }
 
-starknet-devnet-core = { git = "https://github.com/baitcode/starknet-devnet.git", branch = "experiment" }
-starknet-devnet-types = { git = "https://github.com/baitcode/starknet-devnet.git", branch = "experiment" }
+
+starknet-devnet-core = { path = "/Users/baitcode/work/starknet/starknet-devnet/crates/starknet-devnet-core" }
+starknet-devnet-types = { path = "/Users/baitcode/work/starknet/starknet-devnet/crates/starknet-devnet-types" }
+
+# starknet-devnet-core = { git = "https://github.com/baitcode/starknet-devnet.git", branch = "experiment" }
+# starknet-devnet-types = { git = "https://github.com/baitcode/starknet-devnet.git", branch = "experiment" }
 starknet_api = "=0.14.0-rc.3"
 
 cainome = { git = "https://github.com/baitcode/cainome.git", branch = "bugfix-event-conflicts", features = [
@@ -55,6 +59,14 @@ starknet = "=0.15.1"
 starknet-core = "=0.14.0"
 starknet-accounts = "=0.14.0"
 starknet-signers = "=0.12.0"
+
+blockifier = { version = "0.14.0-rc.3" }
+
+r2d2 = { version = "0.8.10" }
+r2d2_sqlite = { version = "0.31.0" }
+rusqlite = { version = "0.37.0" }
+
+zstd = { version = "0.13.3" }
 
 # Arbiter crates.io for release, these need to be used to do crate releases!
 # arbiter-bindings = "0.1.7"
@@ -78,6 +90,7 @@ async-trait = { version = "0.1.80" }
 crossbeam-channel = { version = "0.5.12" }
 
 syn = { version = "2.0.60", features = ["full"] }
+proc-macro = { version = "*" }
 proc-macro2 = { version = "1.0.79" }
 
 tracing = "0.1.40"

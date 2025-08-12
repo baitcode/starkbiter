@@ -65,8 +65,14 @@ use tracing::debug;
 
 use super::*;
 use crate::tokens::get_token_data;
-
 pub mod instruction;
+
+/// This module provides a reader for the Starknet state stored in a SQLite
+/// database. It is compatible with starknet-devnet defaulter implementation,
+/// and allows to replace node api http requests for state storage data with
+/// SQLite queries for Pathfinder formatted sqlite database.
+pub mod sqlite_state_reader;
+
 use instruction::{Instruction, NodeInstruction, NodeOutcome, Outcome};
 
 mod utils;
@@ -349,6 +355,8 @@ async fn process_instructions(
         starknet_config.fork_config.block_number,
         false
     );
+
+    // StarknetDefaulter::register_defaulter("sqliter", )
 
     // Fork configuration
     let mut starknet = Starknet::new(starknet_config).unwrap();
@@ -1081,13 +1089,14 @@ async fn process_instructions(
 
                     let txs = &[BroadcastedTransaction::from(request.clone())];
 
-                    let simulation_flags = simulate_flags
-                        .iter()
-                        .map(|f| SimulationFlag::from(*f))
-                        .collect::<Vec<_>>();
+                    // let simulation_flags = simulate_flags
+                    //     .iter()
+                    //     .map(|f| SimulationFlag::from(*f))
+                    //     .collect::<Vec<_>>();w
 
-                    let fees_result =
-                        starknet.estimate_fee(block_id, txs, simulation_flags.as_slice());
+                    let flags = [SimulationFlag::SkipFeeCharge, SimulationFlag::SkipValidate];
+
+                    let fees_result = starknet.estimate_fee(block_id, txs, flags.as_slice());
 
                     let outcome = match fees_result {
                         Err(e) => Err(StarkbiterCoreError::DevnetError(e)),

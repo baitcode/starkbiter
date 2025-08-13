@@ -6511,6 +6511,7 @@ dependencies = [
 [[package]]
 name = "starknet-devnet-core"
 version = "0.4.1"
+source = "git+https://github.com/baitcode/starknet-devnet.git?branch=experiment#9dc1c6e3128705f59ccb97b46da6b8f4469c4d4e"
 dependencies = [
  "blockifier",
  "cairo-lang-starknet-classes",
@@ -6540,6 +6541,7 @@ dependencies = [
 [[package]]
 name = "starknet-devnet-types"
 version = "0.4.1"
+source = "git+https://github.com/baitcode/starknet-devnet.git?branch=experiment#9dc1c6e3128705f59ccb97b46da6b8f4469c4d4e"
 dependencies = [
  "base64 0.22.1",
  "bigdecimal",

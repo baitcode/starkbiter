@@ -244,10 +244,11 @@ mod tests {
 
     #[test]
     fn test_sqlite_get_compiled_class_v1() {
-        let reader = SQLiteStateReader::new_sqlite_state_reader(
-            Url::parse("sqlite:///Users/baitcode/work/starknet/mainnet-trimmed.sqlite").unwrap(),
-            1642947,
-        );
+        let dir = std::env::current_dir().unwrap();
+        let db_path = format!("sqlite://{}/mainnet-trimmed.sqlite", dir.to_str().unwrap());
+
+        let reader =
+            SQLiteStateReader::new_sqlite_state_reader(Url::parse(&db_path).unwrap(), 1642947);
 
         let class_hash =
             starknet_api::core::ClassHash(starknet_core::types::Felt::from_hex_unchecked(
@@ -265,10 +266,11 @@ mod tests {
 
     #[test]
     fn test_sqlite_get_compiled_class_v0() {
-        let reader = SQLiteStateReader::new_sqlite_state_reader(
-            Url::parse("sqlite:///Users/baitcode/work/starknet/mainnet-trimmed.sqlite").unwrap(),
-            1642947,
-        );
+        let dir = std::env::current_dir().unwrap();
+        let db_path = format!("sqlite://{}/mainnet-trimmed.sqlite", dir.to_str().unwrap());
+
+        let reader =
+            SQLiteStateReader::new_sqlite_state_reader(Url::parse(&db_path).unwrap(), 1642947);
 
         let class_hash =
             starknet_api::core::ClassHash(starknet_core::types::Felt::from_hex_unchecked(
@@ -286,10 +288,11 @@ mod tests {
 
     #[test]
     fn test_sqlite_get_storage_at() {
-        let reader = SQLiteStateReader::new_sqlite_state_reader(
-            Url::parse("sqlite:///Users/baitcode/work/starknet/mainnet-trimmed.sqlite").unwrap(),
-            1642947,
-        );
+        let dir = std::env::current_dir().unwrap();
+        let db_path = format!("sqlite://{}/mainnet-trimmed.sqlite", dir.to_str().unwrap());
+
+        let reader =
+            SQLiteStateReader::new_sqlite_state_reader(Url::parse(&db_path).unwrap(), 1642947);
 
         let address = get_storage_var_address(
             "ERC20_balances",
@@ -327,10 +330,11 @@ mod tests {
 
     #[test]
     fn test_sqlite_get_nonce_at() {
-        let reader = SQLiteStateReader::new_sqlite_state_reader(
-            Url::parse("sqlite:///Users/baitcode/work/starknet/mainnet-trimmed.sqlite").unwrap(),
-            1642947,
-        );
+        let dir = std::env::current_dir().unwrap();
+        let db_path = format!("sqlite://{}/mainnet-trimmed.sqlite", dir.to_str().unwrap());
+
+        let reader =
+            SQLiteStateReader::new_sqlite_state_reader(Url::parse(&db_path).unwrap(), 1642947);
 
         let contract_address = starknet_api::core::ContractAddress::try_from(
             starknet_core::types::Felt::from_hex_unchecked(
@@ -353,10 +357,11 @@ mod tests {
 
     #[test]
     fn test_sqlite_get_class_hash_at() {
-        let reader = SQLiteStateReader::new_sqlite_state_reader(
-            Url::parse("sqlite:///Users/baitcode/work/starknet/mainnet-trimmed.sqlite").unwrap(),
-            1642947,
-        );
+        let dir = std::env::current_dir().unwrap();
+        let db_path = format!("sqlite://{}/mainnet-trimmed.sqlite", dir.to_str().unwrap());
+
+        let reader =
+            SQLiteStateReader::new_sqlite_state_reader(Url::parse(&db_path).unwrap(), 1642947);
 
         let contract_address = starknet_api::core::ContractAddress::try_from(
             starknet_core::types::Felt::from_hex_unchecked(

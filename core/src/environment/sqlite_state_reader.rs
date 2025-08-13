@@ -334,11 +334,11 @@ mod tests {
         let db_path = format!("sqlite://{}/mainnet-trimmed.sqlite", dir.to_str().unwrap());
 
         let reader =
-            SQLiteStateReader::new_sqlite_state_reader(Url::parse(&db_path).unwrap(), 1642947);
+            SQLiteStateReader::new_sqlite_state_reader(Url::parse(&db_path).unwrap(), 2002947);
 
         let contract_address = starknet_api::core::ContractAddress::try_from(
             starknet_core::types::Felt::from_hex_unchecked(
-                "0x01A8B86C9BB05047B0136A96146C3A5BB5C806AFA90687756BE45341A86F8E37",
+                "0x01a8b86c9bb05047b0136a96146c3a5bb5c806afa90687756be45341a86f8e37",
             ),
         )
         .unwrap();
@@ -349,8 +349,11 @@ mod tests {
             "Expected to read nonce successfully. Got: {:?}",
             res
         );
+
+        println!("Nonce: {:?}", res);
+
         assert!(
-            res.unwrap().0 == starknet_core::types::Felt::from_hex_unchecked("0x24d1a"),
+            res.unwrap().0 == starknet_core::types::Felt::from_hex_unchecked("0x2ad22"),
             "Expected nonce to match"
         );
     }

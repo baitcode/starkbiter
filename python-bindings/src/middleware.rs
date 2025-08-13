@@ -13,6 +13,7 @@ use starkbiter_core::{
     middleware::{connection::Connection, traits::Middleware, StarkbiterMiddleware},
     tokens,
 };
+use starknet::providers::Url;
 use starknet_accounts::{Account, SingleOwnerAccount};
 use starknet_core::types::{self};
 use starknet_devnet_types::rpc::gas_modification::GasModificationRequest;
@@ -988,11 +989,13 @@ impl From<&EventFilter> for types::EventFilter {
 pub fn replay_block_with_txs<'p>(
     py: Python<'p>,
     middleware_id: &str,
+    url: &str,
     block_id: BlockId,
     has_events: Option<Vec<EventFilter>>,
     override_nonce: Option<bool>,
 ) -> PyResult<&'p PyAny> {
     let middleware_id_local = middleware_id.to_string();
+    let url_local = url.to_string();
 
     pyo3_asyncio::tokio::future_into_py::<_, _>(py, async move {
         let middlewares_lock = middlewares().lock().await;
@@ -1005,6 +1008,10 @@ pub fn replay_block_with_txs<'p>(
             )));
         }
 
+        let url = Url::parse(&url_local).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid url: {:?}", e))
+        })?;
+
         let middleware = maybe_middleware.unwrap();
 
         let block_id = types::BlockId::try_from(block_id).map_err(|e| {
@@ -1016,7 +1023,7 @@ pub fn replay_block_with_txs<'p>(
             has_events.map(|filters| filters.iter().map(|f| f.into()).collect::<Vec<_>>());
 
         middleware
-            .replay_block_with_txs(block_id, has_events, override_nonce.unwrap_or(false))
+            .replay_block_with_txs(url, block_id, has_events, override_nonce.unwrap_or(false))
             .await
             .map_err(|e| {
                 PyErr::new::<crate::ProviderError, _>(format!("Failed to replay block: {}", e))

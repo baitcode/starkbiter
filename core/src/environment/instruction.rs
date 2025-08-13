@@ -446,6 +446,8 @@ pub enum CheatInstruction {
     /// Fetches block with transactions by its identifier
     /// and adds them on top of pending block in DevNet.
     ReplayBlockWithTxs {
+        /// The URL of the node API to fetch block from.
+        url: Url,
         /// The identifier of the block to retrieve.
         block_id: core_types::BlockId,
         /// Checks if transaction has events matching filters and applies it if

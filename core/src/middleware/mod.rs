@@ -25,6 +25,7 @@ use starknet_devnet_types::{
     num_bigint::BigUint,
     rpc::gas_modification::{GasModification, GasModificationRequest},
 };
+use url::Url;
 
 use super::*;
 use crate::{
@@ -661,6 +662,7 @@ impl Middleware for StarkbiterMiddleware {
 
     async fn replay_block_with_txs<B, F>(
         &self,
+        url: Url,
         block_id: B,
         filters: F,
         override_nonce: bool,
@@ -670,7 +672,7 @@ impl Middleware for StarkbiterMiddleware {
         F: Into<Option<Vec<EventFilter>>> + Send + Sync,
     {
         self.connection()
-            .replay_block_with_txs(block_id, filters, override_nonce)
+            .replay_block_with_txs(url, block_id, filters, override_nonce)
             .await
     }
 

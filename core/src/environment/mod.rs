@@ -356,8 +356,6 @@ async fn process_instructions(
         false
     );
 
-    // StarknetDefaulter::register_defaulter("sqliter", )
-
     // Fork configuration
     let mut starknet = Starknet::new(starknet_config).unwrap();
 
@@ -1089,14 +1087,13 @@ async fn process_instructions(
 
                     let txs = &[BroadcastedTransaction::from(request.clone())];
 
-                    // let simulation_flags = simulate_flags
-                    //     .iter()
-                    //     .map(|f| SimulationFlag::from(*f))
-                    //     .collect::<Vec<_>>();w
+                    let simulation_flags = simulate_flags
+                        .iter()
+                        .map(|f| SimulationFlag::from(*f))
+                        .collect::<Vec<_>>();
 
-                    let flags = [SimulationFlag::SkipFeeCharge, SimulationFlag::SkipValidate];
-
-                    let fees_result = starknet.estimate_fee(block_id, txs, flags.as_slice());
+                    let fees_result =
+                        starknet.estimate_fee(block_id, txs, simulation_flags.as_slice());
 
                     let outcome = match fees_result {
                         Err(e) => Err(StarkbiterCoreError::DevnetError(e)),
@@ -1688,6 +1685,7 @@ async fn process_instructions(
                     }
                 }
                 instruction::CheatInstruction::ReplayBlockWithTxs {
+                    url,
                     block_id,
                     has_events: filters,
                     override_nonce,
@@ -1698,16 +1696,6 @@ async fn process_instructions(
                         "Environment. Received ReplayBlockWithTxs instruction: tx_hash: {:?}",
                         block_id,
                     );
-                    let maybe_url = starknet.config.fork_config.clone().url;
-                    if maybe_url.is_none() {
-                        if let Err(e) = sender.send(Err(StarkbiterCoreError::NoForkConfig)) {
-                            error!("Failed to send Cheating GetBlockWithTxs error: {:?}", e);
-                            stop = true;
-                        }
-                        continue;
-                    }
-
-                    let url = maybe_url.unwrap();
 
                     let provider = JsonRpcClient::new(HttpTransport::new(url.clone()));
 
@@ -1717,7 +1705,7 @@ async fn process_instructions(
                         if let Err(e) =
                             sender.send(Err(StarkbiterCoreError::InternalError(e.to_string())))
                         {
-                            error!("Failed to send Cheating GetBlockWithTxs error: {:?}", e);
+                            error!("Failed to send Cheating ReplayBlockWithTxs error: {:?}", e);
                             stop = true;
                         }
                         continue;

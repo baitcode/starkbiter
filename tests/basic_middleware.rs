@@ -360,17 +360,17 @@ async fn test_replay_block_transactions_containing_ekubo_swaps() {
     let chain_id = ChainId::Mainnet;
 
     let alchemy_key = std::env::var("ALCHEMY_KEY").expect("ALCHEMY_KEY must be set");
-    let url = Url::parse(&format!(
+    let node_url = format!(
         "https://starknet-mainnet.g.alchemy.com/starknet/version/rpc/v0_8/{}/",
         alchemy_key
-    ))
-    .unwrap();
+    );
+    let url = Url::parse(&node_url).unwrap();
 
     // Spin up a new environment with the specified chain ID
     let env = Environment::builder()
         .with_chain_id(chain_id.into())
         .with_fork(
-            url,
+            url.clone(),
             1586288,
             Felt::from_hex_unchecked(
                 "0x634060800585f64b2f5c51cfd14f2770057b7a28ab39767558159e8037acd38",
@@ -392,7 +392,7 @@ async fn test_replay_block_transactions_containing_ekubo_swaps() {
     };
 
     let (added, ignored, failed) = client
-        .replay_block_with_txs(BlockId::Number(1586289), Some(vec![filter]), false)
+        .replay_block_with_txs(url, BlockId::Number(1586289), Some(vec![filter]), false)
         .await
         .expect("Block was not found should've been");
 

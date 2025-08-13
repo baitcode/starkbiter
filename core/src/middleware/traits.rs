@@ -595,6 +595,7 @@ pub trait Middleware {
     /// against pending block of the local version.
     async fn replay_block_with_txs<B, F>(
         &self,
+        url: Url,
         block_id: B,
         filters: F,
         override_nonce: bool,
@@ -604,7 +605,7 @@ pub trait Middleware {
         F: Into<Option<Vec<EventFilter>>> + Send + Sync,
     {
         self.inner()
-            .replay_block_with_txs(block_id, filters, override_nonce)
+            .replay_block_with_txs(url, block_id, filters, override_nonce)
             .await
     }
 }

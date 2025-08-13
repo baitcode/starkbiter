@@ -7,6 +7,7 @@ use starknet::providers::{Provider, ProviderError};
 use starknet_core::types::{self as core_types};
 use starknet_devnet_types::num_bigint::BigUint;
 use tokio::sync::broadcast;
+use url::Url;
 
 use super::*;
 use crate::{
@@ -354,6 +355,7 @@ impl CheatingProvider for Connection {
 
     async fn replay_block_with_txs<B, F>(
         &self,
+        url: Url,
         block_id: B,
         filters: F,
         override_nonce: bool,
@@ -363,6 +365,7 @@ impl CheatingProvider for Connection {
         F: Into<Option<Vec<EventFilter>>> + Send + Sync,
     {
         let to_send = Instruction::Cheat(CheatInstruction::ReplayBlockWithTxs {
+            url,
             block_id: *block_id.as_ref(),
             has_events: filters.into(),
             override_nonce,

@@ -8,6 +8,7 @@ use starknet_devnet_types::{
     num_bigint::BigUint,
     rpc::gas_modification::{GasModification, GasModificationRequest},
 };
+use url::Url;
 
 use crate::{environment::instruction::EventFilter, tokens::TokenId};
 
@@ -115,6 +116,7 @@ pub trait CheatingProvider {
     /// against pending block of the local version.
     async fn replay_block_with_txs<B, F>(
         &self,
+        url: Url,
         block_id: B,
         filters: F,
         override_nonce: bool,

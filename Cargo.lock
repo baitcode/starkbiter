@@ -5104,7 +5104,7 @@ dependencies = [
 
 [[package]]
 name = "python-bindings"
-version = "0.1.21"
+version = "0.1.23"
 dependencies = [
  "futures",
  "num-bigint",

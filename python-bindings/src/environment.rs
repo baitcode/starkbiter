@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::OnceLock};
 
 use pyo3::prelude::*;
 use starkbiter_core::{
-    environment,
+    environment::{self, sqlite_state_reader::SQLiteStateReader},
     tokens::{self, TokenId},
 };
 use starknet::providers::Url;
@@ -134,6 +134,12 @@ pub fn create_environment<'p>(
 
     pyo3_asyncio::tokio::future_into_py::<_, _>(py, async move {
         let chain_id = Felt::from_hex(&chain_id_local).unwrap();
+
+        starknet_devnet_core::starknet::defaulter::StarknetDefaulter::register_defaulter(
+            "sqlite",
+            SQLiteStateReader::new_sqlite_state_reader,
+        )
+        .expect("Can't register SQLite state reader");
 
         // Spin up a new environment with the specified chain ID
         let mut builder = environment::Environment::builder()

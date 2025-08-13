@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 /// SQLiteStateReader
 /// This module provides a reader for the Starknet state stored in a SQLite
 /// database. It is compatible with starknet-devnet defaulter implementation,
@@ -11,7 +13,7 @@ use r2d2_sqlite::{
     rusqlite::{params, OptionalExtension},
     SqliteConnectionManager,
 };
-use starknet_devnet_core::starknet::defaulter::OriginReader;
+use starknet_devnet_core::starknet::defaulter::{OriginReader, StarknetDefaulter};
 use url::Url;
 
 #[derive(Debug, Clone)]
@@ -24,12 +26,14 @@ pub struct SQLiteStateReader {
     pool: r2d2::Pool<SqliteConnectionManager>,
 }
 
-/// Factory function to create a new SQLiteStateReader. Complying with the
-/// OriginReaderFactory type from starknet-devnet fork.
-pub fn new_sqlite_state_reader(url: Url, block_number: u64) -> SQLiteStateReader {
-    let manager = SqliteConnectionManager::file(url.path());
-    let pool = r2d2::Pool::new(manager).unwrap();
-    SQLiteStateReader { block_number, pool }
+impl SQLiteStateReader {
+    /// Factory function to create a new SQLiteStateReader. Complying with the
+    /// OriginReaderFactory type from starknet-devnet fork.
+    pub fn new_sqlite_state_reader(url: Url, block_number: u64) -> StarknetDefaulter {
+        let manager = SqliteConnectionManager::file(url.path());
+        let pool = r2d2::Pool::new(manager).unwrap();
+        StarknetDefaulter::new_with_reader(Arc::new(SQLiteStateReader { block_number, pool }))
+    }
 }
 
 impl OriginReader for SQLiteStateReader {
@@ -52,12 +56,14 @@ impl OriginReader for SQLiteStateReader {
             ",
             params![contract_address.to_bytes_be(), key.to_bytes_be(), self.block_number],
             |row| row.get(0)
-        ).map_err(|err| {
+        )
+        .optional()
+        .map_err(|err| {
             StateError::StateReadError(format!("Failed to read storage. {}", err))
         })?;
 
         Ok(starknet_core::types::Felt::from_bytes_be_slice(
-            result.as_slice(),
+            result.unwrap_or_default().as_slice(),
         ))
     }
 
@@ -69,16 +75,20 @@ impl OriginReader for SQLiteStateReader {
         let result = connection
             .query_one::<Vec<u8>, _, _>(
                 r"
-                SELECT nonce FROM nonce_updates
+                SELECT nonce
+                FROM nonce_updates
                 JOIN contract_addresses ON contract_addresses.id = nonce_updates.contract_address_id
-                WHERE contract_address = ? AND block_number <= ?
+                WHERE contract_address = ?
+                  AND block_number <= ?
                 ORDER BY block_number DESC LIMIT 1
                 ",
                 params![contract_address.to_bytes_be(), self.block_number],
                 |row| row.get(0),
             )
+            .optional()
             .map_err(|err| StateError::StateReadError(format!("Failed to read nonce. {}", err)))?;
-        let felt = starknet_core::types::Felt::from_bytes_be_slice(result.as_slice());
+        let felt =
+            starknet_core::types::Felt::from_bytes_be_slice(result.unwrap_or_default().as_slice());
         Ok(starknet_api::core::Nonce(felt)) // Placeholder implementation
     }
 
@@ -91,17 +101,17 @@ impl OriginReader for SQLiteStateReader {
         let casm_definition = connection
             .query_row::<Vec<u8>, _, _>(
                 r"
-            SELECT
-                casm_definitions.definition,
-                class_definitions.block_number
-            FROM
-                casm_definitions
-                INNER JOIN class_definitions ON (
-                    class_definitions.hash = casm_definitions.hash
-                )
-            WHERE
-                casm_definitions.hash = ?
-                AND class_definitions.block_number <= ?",
+                SELECT
+                    casm_definitions.definition,
+                    class_definitions.block_number
+                FROM
+                    casm_definitions
+                    INNER JOIN class_definitions ON (
+                        class_definitions.hash = casm_definitions.hash
+                    )
+                WHERE
+                    casm_definitions.hash = ?
+                    AND class_definitions.block_number <= ?",
                 params![class_hash.to_bytes_be(), self.block_number],
                 |row| row.get(0),
             )
@@ -113,15 +123,17 @@ impl OriginReader for SQLiteStateReader {
         let class_definition = connection
             .query_row::<Vec<u8>, _, _>(
                 r"
-            SELECT
-              definition,
-              block_number
-            FROM class_definitions
-            WHERE 1=1
-              AND hash = :hash
-              AND block_number <= :block_number
-            ORDER BY block_number DESC LIMIT 1
-            ",
+                SELECT
+                    definition,
+                    block_number
+                FROM
+                    class_definitions
+                WHERE 1=1
+                  AND hash = :hash
+                  AND block_number <= :block_number
+                ORDER BY block_number DESC
+                LIMIT 1
+                ",
                 params![class_hash.to_bytes_be(), self.block_number],
                 |row| {
                     let rf = row.get_ref(0)?;
@@ -201,16 +213,23 @@ impl OriginReader for SQLiteStateReader {
         let connection = self.pool.get().unwrap();
         let result = connection
             .query_one::<Vec<u8>, _, _>(
-                r"SELECT class_hash FROM contract_updates
-                WHERE contract_address = ? AND block_number <= ?
-                ORDER BY block_number DESC LIMIT 1",
+                r"
+                SELECT
+                    class_hash
+                FROM contract_updates
+                WHERE contract_address = ?
+                  AND block_number <= ?
+                ORDER BY block_number DESC
+                LIMIT 1",
                 params![contract_address.to_bytes_be(), self.block_number],
                 |row| row.get(0),
             )
+            .optional()
             .map_err(|err| {
                 StateError::StateReadError(format!("Failed to read storage. {}", err))
             })?;
-        let stark_hash = starknet_core::types::Felt::from_bytes_be_slice(result.as_slice());
+        let stark_hash =
+            starknet_core::types::Felt::from_bytes_be_slice(result.unwrap_or_default().as_slice());
         Ok(starknet_api::core::ClassHash(stark_hash))
     }
 }
@@ -225,7 +244,7 @@ mod tests {
 
     #[test]
     fn test_sqlite_get_compiled_class_v1() {
-        let reader = new_sqlite_state_reader(
+        let reader = SQLiteStateReader::new_sqlite_state_reader(
             Url::parse("sqlite:///Users/baitcode/work/starknet/mainnet-trimmed.sqlite").unwrap(),
             1642947,
         );
@@ -246,7 +265,7 @@ mod tests {
 
     #[test]
     fn test_sqlite_get_compiled_class_v0() {
-        let reader = new_sqlite_state_reader(
+        let reader = SQLiteStateReader::new_sqlite_state_reader(
             Url::parse("sqlite:///Users/baitcode/work/starknet/mainnet-trimmed.sqlite").unwrap(),
             1642947,
         );
@@ -267,7 +286,7 @@ mod tests {
 
     #[test]
     fn test_sqlite_get_storage_at() {
-        let reader = new_sqlite_state_reader(
+        let reader = SQLiteStateReader::new_sqlite_state_reader(
             Url::parse("sqlite:///Users/baitcode/work/starknet/mainnet-trimmed.sqlite").unwrap(),
             1642947,
         );
@@ -308,7 +327,7 @@ mod tests {
 
     #[test]
     fn test_sqlite_get_nonce_at() {
-        let reader = new_sqlite_state_reader(
+        let reader = SQLiteStateReader::new_sqlite_state_reader(
             Url::parse("sqlite:///Users/baitcode/work/starknet/mainnet-trimmed.sqlite").unwrap(),
             1642947,
         );
@@ -334,7 +353,7 @@ mod tests {
 
     #[test]
     fn test_sqlite_get_class_hash_at() {
-        let reader = new_sqlite_state_reader(
+        let reader = SQLiteStateReader::new_sqlite_state_reader(
             Url::parse("sqlite:///Users/baitcode/work/starknet/mainnet-trimmed.sqlite").unwrap(),
             1642947,
         );

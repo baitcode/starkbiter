@@ -86,6 +86,7 @@ cargo install cargo-generate
 For an example usage of python library and reference wrapper implementation check out [this](https://github.com/baitcode/starkbiter-python-example) repo
 
 ### Examples
+
 We have an example that will run what we have set up in a template.
 To run this, you can clone the repository and update the submodules:
 ```bash

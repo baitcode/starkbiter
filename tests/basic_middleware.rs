@@ -314,7 +314,12 @@ async fn test_get_block_with_txs_for_future_blocks() {
     let chain_id_felt = Felt::from_hex("0x696e766f6b65").unwrap();
     let chain_id = ChainId::Custom(chain_id_felt);
 
-    let url = Url::parse("https://starknet-mainnet.public.blastapi.io").unwrap();
+    let alchemy_key = std::env::var("ALCHEMY_KEY").expect("ALCHEMY_KEY must be set");
+    let url = Url::parse(&format!(
+        "https://starknet-mainnet.g.alchemy.com/starknet/version/rpc/v0_8/{}/",
+        alchemy_key
+    ))
+    .unwrap();
 
     // Spin up a new environment with the specified chain ID
     let env = Environment::builder()
@@ -354,7 +359,11 @@ async fn test_replay_block_transactions_containing_ekubo_swaps() {
     // Custom chain ID for Starknet
     let chain_id = ChainId::Mainnet;
 
-    let node_url = "https://starknet-mainnet.public.blastapi.io";
+    let alchemy_key = std::env::var("ALCHEMY_KEY").expect("ALCHEMY_KEY must be set");
+    let node_url = format!(
+        "https://starknet-mainnet.g.alchemy.com/starknet/version/rpc/v0_8/{}/",
+        alchemy_key
+    );
     let url = Url::parse(&node_url).unwrap();
 
     // Spin up a new environment with the specified chain ID
